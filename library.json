@@ -1,0 +1,21 @@
+{
+  "name": "",
+  "description": "",
+    "keywords": "",
+  "authors": {
+    "name": "GOB",
+    "url": "https://github.com/GOB52",
+    "maintainer": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GOB52/repo.git"
+  },
+  "version": "0.0.0",
+  "headers": "***.hpp",
+  "license": "MIT",
+  "platforms": "espressif32",
+  "frameworks": "arduino",
+  "dependencies": {
+  }
+}
