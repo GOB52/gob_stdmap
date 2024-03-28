@@ -136,7 +136,6 @@ TEST(goblib_stdmap, compatibility)
         // not exists
         sit = s_map.lower_bound(10000);
         vit = v_map.lower_bound(10000);
-        printf("10000 %d,%d\n", sit->first, vit->first);
         EXPECT_EQ(sit, s_map.end());
         EXPECT_EQ(vit, v_map.end());
 
@@ -189,28 +188,30 @@ TEST(goblib_stdmap, compatibility)
     EXPECT_EQ(s_map.empty(), v_map.empty());
 }
 
+
+#if 0
 namespace
 {
-    struct Foo
-    {
-        Foo(const char* p) : _p(p) { printf("cstr\n"); ++cnt; }
-        Foo(const Foo& f) : _p(f._p) { printf("copy cstr\n"); ++copy_con_cnt; }
-        Foo(Foo&& f) : _p(std::move(f._p)) { printf("move cstr\n"); ++move_con_cnt; _p = nullptr; }
-        Foo& operator=(const Foo& f) { _p = f._p; ++eq_cnt; return *this; }
-        Foo& operator=(Foo&& f) { _p = std::move(f._p); ++move_eq_cnt; f._p = nullptr; return *this; }
+struct Foo
+{
+    Foo(const char* p) : _p(p) { printf("cstr\n"); ++cnt; }
+    Foo(const Foo& f) : _p(f._p) { printf("copy cstr\n"); ++copy_con_cnt; }
+    Foo(Foo&& f) : _p(std::move(f._p)) { printf("move cstr\n"); ++move_con_cnt; _p = nullptr; }
+    Foo& operator=(const Foo& f) { _p = f._p; ++eq_cnt; return *this; }
+    Foo& operator=(Foo&& f) { _p = std::move(f._p); ++move_eq_cnt; f._p = nullptr; return *this; }
 
         
-        static uint32_t cnt;
-        static uint32_t copy_con_cnt;
-        static uint32_t move_con_cnt;
-        static uint32_t eq_cnt;
-        static uint32_t move_eq_cnt;
+    static uint32_t cnt;
+    static uint32_t copy_con_cnt;
+    static uint32_t move_con_cnt;
+    static uint32_t eq_cnt;
+    static uint32_t move_eq_cnt;
 
-        bool operator<(const Foo& o) const { return strcmp(_p, o._p) < 0; }
-        //        bool operator==(const Foo& o) const { return strcmp(_p, o._p) == 0; }
-        //        bool operator!=(const Foo& o) const { return strcmp(_p, o._p) != 0; }
-        const char* _p;
-    };
+    bool operator<(const Foo& o) const { return strcmp(_p, o._p) < 0; }
+    //        bool operator==(const Foo& o) const { return strcmp(_p, o._p) == 0; }
+    //        bool operator!=(const Foo& o) const { return strcmp(_p, o._p) != 0; }
+    const char* _p;
+};
 uint32_t Foo::cnt{};
 uint32_t Foo::copy_con_cnt{};
 uint32_t Foo::move_con_cnt{};
@@ -230,7 +231,7 @@ TEST(gobkib_stdmap, move)
            Foo::cnt, Foo::copy_con_cnt, Foo::move_con_cnt, Foo::eq_cnt, Foo::move_eq_cnt);
 
 }
-
+#endif
 
 
 TEST(goblib_stdmap, compare)
@@ -244,39 +245,32 @@ TEST(goblib_stdmap, compare)
         }
     };
 
-    // ポインタ順だと Z...A
-    std::array<const char*, 26> fcode = {
+    std::array<const char*, 26> org = {
         "Zulu", "Yankee", "X-ray", "Whiskey", "Victor", "Uniform",
         "Tango", "Sierra", "Romeo", "Quebec", "Papa", "Oscar",
         "November", "Mike", "Lima", "Kilo", "Juliett", "India",
         "Hotel", "Golf", "Foxtrot", "Echo", "Delta", "Charlie",
         "Bravo", "Alpha"
     };
+    std::sort(org.begin(), org.end()); // order by address (上の並び順通りなるとは限らないので)
+    
+    std::array<const char*, 26> fcode = org;
     std::sort(fcode.begin(), fcode.end(), compare_str()); // A...Z にソート
     
     std::array<const char*, 26> shuffled = fcode;
     std::shuffle(shuffled.begin(),shuffled.end(), rng); // 混ぜる
 
-#if 0
-    for(auto& e : fcode) { printf("%p\n", e); }
-    printf("shuffled ---\n");
-    for(auto& e : shuffled) { printf("%s\n", e); }
-#endif
-    
+    // fmap は文字列辞書順
+    // badmap はポインタアドレス順
     goblib::stdmap<const char*, int, compare_str> fmap; // order by compare_str
     goblib::stdmap<const char*, int> badmap; // order by pointer
+
     for(auto& e : shuffled)
     {
         fmap.emplace(e, rng());
         badmap.emplace(e, rng());
     }
-
-#if 0
-    printf("valid ---\n");
-    for(auto& e : fmap)   { printf("%s\n", e.first); }
-    printf("bad ---\n");
-    for(auto& e : badmap) { printf("%s\n", e.first); }
-#endif
+    //    for(auto&& e : badmap) { printf("> %s\n", e); }
     
     int idx = 0;
     for(auto& e : fmap)
@@ -287,21 +281,19 @@ TEST(goblib_stdmap, compare)
     idx = 0;
     for(auto& e : badmap)
     {
-        EXPECT_STRNE(e.first, fcode[idx]);
+        EXPECT_STREQ(e.first, org[idx]);
         ++idx;
     }
 
-
-
-
-
-
-
-    // ポインタ比較では消えないが
-    //
-    //    比較で消える場合
-
-
-
-
+    char buf[16] = { 'K', 'i', 'l', 'o', '\0' };
+    {
+        auto sz = fmap.size();
+        fmap.erase(buf); // 文字列比較なので消える
+        EXPECT_EQ(sz - 1, fmap.size());
+    }
+    {
+        auto sz = badmap.size();
+        badmap.erase(buf); // アドレス比較なので消えない
+        EXPECT_EQ(sz, badmap.size());
+    }
 }
