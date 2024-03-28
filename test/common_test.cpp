@@ -57,7 +57,7 @@ TEST(goblib_stdmap, compatibility)
     sit = std::next(s_map.find(3), 1); // [5]
     vit = std::next(v_map.find(3), 1); // [5]
     EXPECT_EQ(sit->first, vit->first);
-    // by iterators
+    // by iterators erase 10..19
     sit = s_map.find(10);
     sit2 = s_map.find(20);
     sit2 = s_map.erase(sit, sit2);
@@ -66,7 +66,7 @@ TEST(goblib_stdmap, compatibility)
     vit2 = v_map.erase(vit, vit2);
     EXPECT_EQ(sit2->first, vit2->first);
     EXPECT_EQ(s_map.size(), v_map.size());
-    for(int i=10;i<20;++i)
+    for(int i=10;i<20;++i) // erased?
     {
         EXPECT_EQ(s_map.find(i), s_map.end()) << "S) i:" << i;
         EXPECT_EQ(v_map.find(i), v_map.end()) << "V) i:" << i;
@@ -79,19 +79,30 @@ TEST(goblib_stdmap, compatibility)
     EXPECT_EQ(s_map.count(-100), s_map.count(-100));
 
     // emplace
-    // Not exists
+    // (key Not exists)
     auto rs = s_map.emplace(15, 30);
     auto rv = v_map.emplace(15, 30);
     EXPECT_EQ(rs.first->first, rv.first->first);   // iterator
-    EXPECT_EQ(rs.second, rv.second); // inserted? bool
+    EXPECT_EQ(rs.second, true);
+    EXPECT_EQ(rs.second, rv.second); // inserted? bool == true
     EXPECT_EQ(s_map.size(), v_map.size());
-    // Exists
+    // (key exists)
     rs = s_map.emplace(60, 120);
     rv = v_map.emplace(60, 120);
     EXPECT_EQ(rs.first->first, rv.first->first);   // iterator
-    EXPECT_EQ(rs.second, rv.second); // inserted? bool
+    EXPECT_EQ(rs.second, false); // menas failed to emplace
+    EXPECT_EQ(rs.second, rv.second); // inserted? bool == false
     EXPECT_EQ(s_map.size(), v_map.size());
-
+    // (piecewise construct)
+    s_map.emplace(std::piecewise_construct,
+                  std::forward_as_tuple(999),
+                  std::forward_as_tuple(112)); // empalce(999,112)
+    v_map.emplace(std::piecewise_construct,
+                  std::forward_as_tuple(999),
+                  std::forward_as_tuple(112)); // empalce(999,112)
+    EXPECT_EQ(s_map[999], v_map[999]);
+    EXPECT_EQ(s_map.size(), v_map.size());
+    
     // iterator
     {
         auto sbeg = s_map.begin();
@@ -113,12 +124,113 @@ TEST(goblib_stdmap, compatibility)
         EXPECT_EQ(sbeg->first, vbeg->first);
         EXPECT_EQ(send->first, vend->first);
     }
+
+    // bound
+    {
+        // lower
+        // exists
+        auto sit = s_map.lower_bound(30);
+        auto vit = v_map.lower_bound(30);
+        EXPECT_EQ(sit->first,  vit->first);
+        EXPECT_EQ(sit->second, vit->second);
+        // not exists
+        sit = s_map.lower_bound(10000);
+        vit = v_map.lower_bound(10000);
+        printf("10000 %d,%d\n", sit->first, vit->first);
+        EXPECT_EQ(sit, s_map.end());
+        EXPECT_EQ(vit, v_map.end());
+
+        // upper
+        // exists
+        sit = s_map.upper_bound(30);
+        vit = v_map.upper_bound(30);
+        EXPECT_EQ(sit->first,  vit->first);
+        EXPECT_EQ(sit->second, vit->second);
+        // not exists
+        sit = s_map.upper_bound(-33);
+        vit = v_map.upper_bound(-33);
+        EXPECT_EQ(sit, s_map.begin());
+        EXPECT_EQ(vit, v_map.begin());
+
+        // equal
+        auto sp = s_map.equal_range(50);
+        auto vp = v_map.equal_range(50);
+        EXPECT_EQ(std::distance(sp.first, sp.second), std::distance(vp.first, vp.second));
+        sp = s_map.equal_range(5000);
+        vp = v_map.equal_range(5000);
+        EXPECT_EQ(std::distance(sp.first, sp.second), std::distance(vp.first, vp.second));
+        sp = s_map.equal_range(-5000);
+        vp = v_map.equal_range(-5000);
+        EXPECT_EQ(std::distance(sp.first, sp.second), std::distance(vp.first, vp.second));
+    }
+    
+    // swap
+    std::map<int,int> s_map2;
+    goblib::stdmap<int,int> v_map2;
+
+    s_map.swap(s_map2);
+    v_map.swap(v_map2);
+    EXPECT_TRUE(s_map.empty());
+    EXPECT_FALSE(s_map2.empty());
+    EXPECT_EQ(s_map.empty(), v_map.empty());
+    EXPECT_EQ(s_map2.size(), v_map2.size());
+
+    std::swap(s_map, s_map2);
+    std::swap(v_map, v_map2);
+    EXPECT_FALSE(s_map.empty());
+    EXPECT_TRUE(s_map2.empty());
+    EXPECT_EQ(s_map.empty(), v_map.empty());
+    EXPECT_EQ(s_map2.empty(), v_map2.empty());
+    EXPECT_EQ(s_map.size(), v_map.size());
     
     // clear
     s_map.clear();
     v_map.clear();
     EXPECT_EQ(s_map.empty(), v_map.empty());
 }
+
+namespace
+{
+    struct Foo
+    {
+        Foo(const char* p) : _p(p) { printf("cstr\n"); ++cnt; }
+        Foo(const Foo& f) : _p(f._p) { printf("copy cstr\n"); ++copy_con_cnt; }
+        Foo(Foo&& f) : _p(std::move(f._p)) { printf("move cstr\n"); ++move_con_cnt; _p = nullptr; }
+        Foo& operator=(const Foo& f) { _p = f._p; ++eq_cnt; return *this; }
+        Foo& operator=(Foo&& f) { _p = std::move(f._p); ++move_eq_cnt; f._p = nullptr; return *this; }
+
+        
+        static uint32_t cnt;
+        static uint32_t copy_con_cnt;
+        static uint32_t move_con_cnt;
+        static uint32_t eq_cnt;
+        static uint32_t move_eq_cnt;
+
+        bool operator<(const Foo& o) const { return strcmp(_p, o._p) < 0; }
+        //        bool operator==(const Foo& o) const { return strcmp(_p, o._p) == 0; }
+        //        bool operator!=(const Foo& o) const { return strcmp(_p, o._p) != 0; }
+        const char* _p;
+    };
+uint32_t Foo::cnt{};
+uint32_t Foo::copy_con_cnt{};
+uint32_t Foo::move_con_cnt{};
+uint32_t Foo::eq_cnt{};
+uint32_t Foo::move_eq_cnt{};
+}
+
+
+TEST(gobkib_stdmap, move)
+{
+
+    goblib::stdmap<Foo, int> mmap;
+
+    mmap.emplace(Foo("ABC"), 42);
+    //mmap[Foo("ABC")] = 1;
+    printf("c:%u cc:%u mc:%u eq:%u me:%u",
+           Foo::cnt, Foo::copy_con_cnt, Foo::move_con_cnt, Foo::eq_cnt, Foo::move_eq_cnt);
+
+}
+
 
 
 TEST(goblib_stdmap, compare)
@@ -178,11 +290,18 @@ TEST(goblib_stdmap, compare)
         EXPECT_STRNE(e.first, fcode[idx]);
         ++idx;
     }
-}
 
-// embedded のみへ
-TEST(goblib_stdmap, benchmark)
-{
+
+
+
+
+
+
+    // ポインタ比較では消えないが
+    //
+    //    比較で消える場合
+
+
 
 
 }
