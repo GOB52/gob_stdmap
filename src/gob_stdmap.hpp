@@ -30,7 +30,7 @@ namespace goblib
   @tparam Key Type of key
   @tparam T Type of element
   @tparam Compare Function for compare [optional]
-  @tparam Allocator Custom allocator
+  @tparam Allocator Custom allocator [optional]
   @note Adding an element causes the element to be sorted by the value of key (for binary search)
  */
 template <
@@ -44,9 +44,7 @@ class stdmap
   public:
     using key_type = Key;
     using mapped_type = T;
-    //    using value_type = std::pair<typename std::add_const<Key>::type, T>;
     using value_type = typename std::pair<Key, T>;
-    //    using container_type = std::vector<std::pair<const Key, T>, Allocator>;
     using container_type = std::vector<std::pair<Key, T>, Allocator>;
     using size_type = typename container_type::size_type;
     using reference = value_type&;
@@ -74,6 +72,7 @@ class stdmap
     };
     using value_compare = ValueCompare;
     using allocator_type = Allocator;
+    using difference_type = typename std::iterator_traits<iterator>::difference_type;
     using pointer = typename std::allocator_traits<Allocator>::pointer;
     using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
 
@@ -290,12 +289,67 @@ class stdmap
     inline bool ne_key(const key_type& a, const key_type& b) { return _compare_key(a,b) || _compare_key(b,a); }
     inline bool eq_key(const key_type& a, const key_type& b) { return !ne_key(a, b); }
 };
+
+///@name Compare
+/// @related goblib::stdmap
+///@{
+template<typename Key, typename T, class Compare = std::less<Key>,class Allocator = std::allocator<std::pair<Key, T>>>
+bool operator==(const stdmap<Key,T,Compare, Allocator>& a, const stdmap<Key,T,Compare, Allocator>& b)
+{
+    using value_type = typename stdmap<Key,T,Compare, Allocator>::value_type;
+    auto cmp = a.key_comp();
+    return a.size() == b.size()
+            && std::equal(a.begin(), a.end(), b.begin(), b.end(),
+                          [&cmp](const value_type& x, const value_type& y)
+                          {
+                              return (!(cmp(x,y) || cmp(y,x))) // Are same keys?
+                                      && x.second == y.second; // Are same values?
+                          });
+}
+template<typename Key, typename T, class Compare = std::less<Key>,class Allocator = std::allocator<std::pair<Key, T>>>
+bool operator!=(const stdmap<Key,T,Compare, Allocator>& a, const stdmap<Key,T,Compare, Allocator>& b)
+{
+    return !(a == b);
+}
+template<typename Key, typename T, class Compare = std::less<Key>,class Allocator = std::allocator<std::pair<Key, T>>>
+bool operator<(const stdmap<Key,T,Compare, Allocator>& a, const stdmap<Key,T,Compare, Allocator>& b)
+{
+    using value_type = typename stdmap<Key,T,Compare, Allocator>::value_type;
+    auto cmp = a.key_comp();
+    return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(),
+                                        [&cmp](const value_type& x, const value_type& y)
+                                        {
+                                            return (!(cmp(x,y) || cmp(y,x)))
+                                                    ? x.second < y.second // Compare by value if the keys are the same
+                                                    : cmp(x,y); // Is x less y??
+                                        });
+}
+template<typename Key, typename T, class Compare = std::less<Key>,class Allocator = std::allocator<std::pair<Key, T>>>
+bool operator>(const stdmap<Key,T,Compare, Allocator>& a, const stdmap<Key,T,Compare, Allocator>& b)
+{
+    return b < a;
+}
+template<typename Key, typename T, class Compare = std::less<Key>,class Allocator = std::allocator<std::pair<Key, T>>>
+bool operator<=(const stdmap<Key,T,Compare, Allocator>& a, const stdmap<Key,T,Compare, Allocator>& b)
+{
+    return !(a > b);
+}
+template<typename Key, typename T, class Compare = std::less<Key>,class Allocator = std::allocator<std::pair<Key, T>>>
+bool operator>=(const stdmap<Key,T,Compare, Allocator>& a, const stdmap<Key,T,Compare, Allocator>& b)
+{
+    return !(a < b);
+}
+///@}
+
 //goblib
 }
 
 namespace std
 {
-//! @brief Specializes the std::swap algorithm for goblib::stdmap
+/*!
+  @related goblib::stdmap
+  @brief Specializes the std::swap algorithm for goblib::stdmap
+*/
 template <class Key, class T, class Compare, class Allocator>
 inline void swap(goblib::stdmap<Key,T,Compare,Allocator>& x, goblib::stdmap<Key,T,Compare,Allocator>& y)
   {
