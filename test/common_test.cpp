@@ -5,8 +5,169 @@
 #include <cstring>
 #include <array>
 #include "gob_stdmap.hpp"
+#include "allocator.hpp"
 
 auto rng = std::default_random_engine {};
+
+namespace
+{
+//
+}
+
+TEST(goblib_stdmap, constructor)
+{
+    using pair_t = std::pair<int, int>;
+    std::array<pair_t, 3> elms = {{{1, 2}, {3, 4}, {5, 6}}};
+
+    {
+        goblib::stdmap<int,int> gmap;
+        EXPECT_TRUE(gmap.empty());
+        EXPECT_EQ(gmap.size(), 0U);
+        gmap.emplace(1,2);
+        EXPECT_EQ(gmap.size(), 1U);
+
+    }
+    {
+        auto gmap = goblib::stdmap<int,int>(std::less<int>(), MyAllocator<pair_t>());
+        EXPECT_TRUE(gmap.empty());
+        EXPECT_EQ(gmap.size(), 0U);
+        gmap.emplace(1,2);
+        EXPECT_EQ(gmap.size(), 1U);
+    }
+
+    {
+        auto gmap = goblib::stdmap<int,int>(MyAllocator<pair_t>());
+        EXPECT_TRUE(gmap.empty());
+        EXPECT_EQ(gmap.size(), 0U);
+        gmap.emplace(1,2);
+        EXPECT_EQ(gmap.size(), 1U);
+    }
+
+    {
+        goblib::stdmap<int,int> gmap(elms.begin(), elms.end(), std::less<int>(), MyAllocator<pair_t>());
+        EXPECT_FALSE(gmap.empty());
+        EXPECT_EQ(gmap.size(), elms.size());
+        gmap.emplace(111,222);
+        EXPECT_EQ(gmap.size(), elms.size() + 1);
+
+        auto gmap2 = gmap;
+        EXPECT_EQ(gmap2.size(), elms.size() + 1);
+
+        auto gmap3 = goblib::stdmap<int,int>(gmap2, MyAllocator<pair_t>());
+        EXPECT_EQ(gmap3.size(), elms.size() + 1);
+
+        goblib::stdmap<int,int> gmap4(std::move(gmap));
+        EXPECT_EQ(gmap4.size(), elms.size() + 1);        
+        EXPECT_TRUE(gmap.empty());
+        
+        MyAllocator<pair_t> alloc;
+        goblib::stdmap<int,int> gmap5(std::move(gmap2), alloc);
+        EXPECT_EQ(gmap5.size(), elms.size() + 1);
+        EXPECT_TRUE(gmap2.empty());
+    }
+
+    {
+        std::initializer_list<pair_t> il= { {1,2}, {2,3}, {3, 4} };
+        goblib::stdmap<int,int> gmap(il, std::less<int>(), MyAllocator<pair_t>());
+        EXPECT_FALSE(gmap.empty());
+        EXPECT_EQ(gmap.size(), 3);
+        gmap.emplace(111,222);
+        EXPECT_EQ(gmap.size(), 4);
+    }
+}
+
+TEST(goblib_stdmap, assignment)
+{
+    using pair_t = std::pair<int, int>;
+    std::initializer_list<pair_t> il= { {1,2}, {2,3}, {3, 4} };
+    {
+        goblib::stdmap<int,int> gmap(il);
+        goblib::stdmap<int,int> gmap2;
+
+        EXPECT_FALSE(gmap.empty());
+        EXPECT_EQ(gmap.size(), 3);
+        EXPECT_TRUE(gmap2.empty());
+        
+        gmap2 = gmap;
+        EXPECT_FALSE(gmap2.empty());
+        EXPECT_EQ(gmap2.size(), 3);
+
+        gmap.emplace(555,555);
+        gmap2 = std::move(gmap);
+        EXPECT_TRUE(gmap.empty());
+        EXPECT_FALSE(gmap2.empty());
+        EXPECT_EQ(gmap2.size(), 4);
+
+        gmap2 = il;
+        EXPECT_FALSE(gmap2.empty());
+        EXPECT_EQ(gmap2.size(), 3);
+
+    }
+}
+
+TEST(goblib_stdmap, compare)
+{
+    struct compare_str
+    {
+        bool operator()(const char* a, const char* b) const
+        {
+            // Strict weak order (operator<(x,x) is false)
+            return strcmp(a,b) < 0;
+        }
+    };
+
+    std::array<const char*, 26> org = {
+        "Zulu", "Yankee", "X-ray", "Whiskey", "Victor", "Uniform",
+        "Tango", "Sierra", "Romeo", "Quebec", "Papa", "Oscar",
+        "November", "Mike", "Lima", "Kilo", "Juliett", "India",
+        "Hotel", "Golf", "Foxtrot", "Echo", "Delta", "Charlie",
+        "Bravo", "Alpha"
+    };
+    std::sort(org.begin(), org.end()); // order by address (上の並び順通りなるとは限らないので)
+    
+    std::array<const char*, 26> fcode = org;
+    std::sort(fcode.begin(), fcode.end(), compare_str()); // A...Z にソート
+    
+    std::array<const char*, 26> shuffled = fcode;
+    std::shuffle(shuffled.begin(),shuffled.end(), rng); // 混ぜる
+
+    // fmap は文字列辞書順
+    // badmap はポインタアドレス順
+    goblib::stdmap<const char*, int, compare_str> fmap; // order by compare_str
+    goblib::stdmap<const char*, int> badmap; // order by pointer
+
+    for(auto& e : shuffled)
+    {
+        fmap.emplace(e, rng());
+        badmap.emplace(e, rng());
+    }
+    //    for(auto&& e : badmap) { printf("> %s\n", e); }
+    
+    int idx = 0;
+    for(auto& e : fmap)
+    {
+        EXPECT_STREQ(e.first, fcode[idx]);
+        ++idx;
+    }
+    idx = 0;
+    for(auto& e : badmap)
+    {
+        EXPECT_STREQ(e.first, org[idx]);
+        ++idx;
+    }
+
+    char buf[16] = { 'K', 'i', 'l', 'o', '\0' }; // "Kilo"
+    {
+        auto sz = fmap.size();
+        fmap.erase(buf); // 文字列比較なので消える
+        EXPECT_EQ(sz - 1, fmap.size());
+    }
+    {
+        auto sz = badmap.size();
+        badmap.erase(buf); // アドレス比較なので消えない
+        EXPECT_EQ(sz, badmap.size());
+    }
+}
 
 // Test compatibility between std:map and goblib::stdmap
 TEST(goblib_stdmap, compatibility)
@@ -188,112 +349,47 @@ TEST(goblib_stdmap, compatibility)
     EXPECT_EQ(s_map.empty(), v_map.empty());
 }
 
-
-#if 0
-namespace
+TEST(goblib_stdmap, allocator)
 {
-struct Foo
-{
-    Foo(const char* p) : _p(p) { printf("cstr\n"); ++cnt; }
-    Foo(const Foo& f) : _p(f._p) { printf("copy cstr\n"); ++copy_con_cnt; }
-    Foo(Foo&& f) : _p(std::move(f._p)) { printf("move cstr\n"); ++move_con_cnt; _p = nullptr; }
-    Foo& operator=(const Foo& f) { _p = f._p; ++eq_cnt; return *this; }
-    Foo& operator=(Foo&& f) { _p = std::move(f._p); ++move_eq_cnt; f._p = nullptr; return *this; }
+    //    constexpr size_t esize[] = { 10, 100, 1000, 10000 };
+    constexpr size_t esize[] = { 1000 };
 
-        
-    static uint32_t cnt;
-    static uint32_t copy_con_cnt;
-    static uint32_t move_con_cnt;
-    static uint32_t eq_cnt;
-    static uint32_t move_eq_cnt;
+    using smap_t =       std::map<int32_t, uint8_t, std::less<int32_t>, MyAllocator<std::pair<const int32_t, uint8_t>>>;
+    using gmap_t = goblib::stdmap<int32_t, uint8_t, std::less<int32_t>, MyAllocator<std::pair<int32_t, uint8_t>>>;
+    
 
-    bool operator<(const Foo& o) const { return strcmp(_p, o._p) < 0; }
-    //        bool operator==(const Foo& o) const { return strcmp(_p, o._p) == 0; }
-    //        bool operator!=(const Foo& o) const { return strcmp(_p, o._p) != 0; }
-    const char* _p;
-};
-uint32_t Foo::cnt{};
-uint32_t Foo::copy_con_cnt{};
-uint32_t Foo::move_con_cnt{};
-uint32_t Foo::eq_cnt{};
-uint32_t Foo::move_eq_cnt{};
-}
-
-
-TEST(gobkib_stdmap, move)
-{
-
-    goblib::stdmap<Foo, int> mmap;
-
-    mmap.emplace(Foo("ABC"), 42);
-    //mmap[Foo("ABC")] = 1;
-    printf("c:%u cc:%u mc:%u eq:%u me:%u",
-           Foo::cnt, Foo::copy_con_cnt, Foo::move_con_cnt, Foo::eq_cnt, Foo::move_eq_cnt);
-
-}
-#endif
-
-
-TEST(goblib_stdmap, compare)
-{
-    struct compare_str
+    for(auto& e : esize)
     {
-        bool operator()(const char* a, const char* b) const
+        smap_t smap;
+        //auto& sa = smap.get_allocator();
+        EXPECT_EQ(smap.get_allocator().usage(), 0U);
+
+        //gmap_t gmap;
+        //        auto& ga = gmap.get_allocator();
+        //EXPECT_EQ(gmap.get_allocator().usage(), 0U);
+
+        for(size_t i = 0; i < e; ++i)
         {
-            // Strict weak order (operator<(x,x) is false)
-            return strcmp(a,b) < 0;
+            smap.emplace((int32_t)i, i&0xFF);
+            //gmap.emplace((int32_t)i, i&0xFF);
         }
-    };
+        //                EXPECT_NE(smap.get_allocator().usage(), 0U);
+        //                EXPECT_NE(gmap.get_allocator().usage(), 0U);
+        
+        printf("-------------->>>[%zu]:%zu\n", e, smap.get_allocator().usage());
+        //        printf("-------------->>>[%zu]:%zu\n", e, gmap.get_allocator().usage());
 
-    std::array<const char*, 26> org = {
-        "Zulu", "Yankee", "X-ray", "Whiskey", "Victor", "Uniform",
-        "Tango", "Sierra", "Romeo", "Quebec", "Papa", "Oscar",
-        "November", "Mike", "Lima", "Kilo", "Juliett", "India",
-        "Hotel", "Golf", "Foxtrot", "Echo", "Delta", "Charlie",
-        "Bravo", "Alpha"
-    };
-    std::sort(org.begin(), org.end()); // order by address (上の並び順通りなるとは限らないので)
-    
-    std::array<const char*, 26> fcode = org;
-    std::sort(fcode.begin(), fcode.end(), compare_str()); // A...Z にソート
-    
-    std::array<const char*, 26> shuffled = fcode;
-    std::shuffle(shuffled.begin(),shuffled.end(), rng); // 混ぜる
 
-    // fmap は文字列辞書順
-    // badmap はポインタアドレス順
-    goblib::stdmap<const char*, int, compare_str> fmap; // order by compare_str
-    goblib::stdmap<const char*, int> badmap; // order by pointer
-
-    for(auto& e : shuffled)
-    {
-        fmap.emplace(e, rng());
-        badmap.emplace(e, rng());
-    }
-    //    for(auto&& e : badmap) { printf("> %s\n", e); }
-    
-    int idx = 0;
-    for(auto& e : fmap)
-    {
-        EXPECT_STREQ(e.first, fcode[idx]);
-        ++idx;
-    }
-    idx = 0;
-    for(auto& e : badmap)
-    {
-        EXPECT_STREQ(e.first, org[idx]);
-        ++idx;
     }
 
-    char buf[16] = { 'K', 'i', 'l', 'o', '\0' };
+    for(auto& e : esize)
     {
-        auto sz = fmap.size();
-        fmap.erase(buf); // 文字列比較なので消える
-        EXPECT_EQ(sz - 1, fmap.size());
+        gmap_t gmap;
+        for(size_t i = 0; i < e; ++i)
+        {
+            gmap.emplace((int32_t)i, i&0xFF);
+        }
+        printf("-------------->>>[%zu]:%zu\n", e, gmap.get_allocator().usage());
     }
-    {
-        auto sz = badmap.size();
-        badmap.erase(buf); // アドレス比較なので消えない
-        EXPECT_EQ(sz, badmap.size());
-    }
+
 }
