@@ -44,7 +44,9 @@ class stdmap
   public:
     using key_type = Key;
     using mapped_type = T;
-    using value_type = std::pair<typename std::add_const<Key>::type, T>;
+    //    using value_type = std::pair<typename std::add_const<Key>::type, T>;
+    using value_type = typename std::pair<Key, T>;
+    //    using container_type = std::vector<std::pair<const Key, T>, Allocator>;
     using container_type = std::vector<std::pair<Key, T>, Allocator>;
     using size_type = typename container_type::size_type;
     using reference = value_type&;
@@ -74,9 +76,47 @@ class stdmap
     using allocator_type = Allocator;
     using pointer = typename std::allocator_traits<Allocator>::pointer;
     using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
-    //
-    stdmap() = default;
 
+    ///@name Constructor
+    ///@{
+    stdmap() : stdmap(Compare()) {}
+    explicit stdmap(const Compare& comp, const Allocator& alloc = Allocator()) : _v(alloc), _compare_key(comp), _compare_value(_compare_key) {}
+    explicit stdmap(const Allocator& alloc) : stdmap(Compare(), alloc) {}
+    template <class InputIterator> stdmap(InputIterator first, InputIterator last, const Compare& comp = Compare(), const Allocator& alloc = Allocator()) : _v(first, last, alloc), _compare_key(comp), _compare_value(_compare_key) {}
+    stdmap(const stdmap& x) : _v(x._v), _compare_key(x._compare_key), _compare_value(_compare_key) {}
+    stdmap(const stdmap& x, const Allocator& alloc) : _v(x._v.begin(), x._v.end(), alloc), _compare_key(x._compare_key), _compare_value(_compare_key) {}
+    stdmap(stdmap&& x) : _v(std::move(x._v)), _compare_key(std::move(x._compare_key)), _compare_value(x._compare_value) {}
+    stdmap(stdmap&& x, const Allocator& alloc) : _v(std::move(x._v), alloc), _compare_key(std::move(x._compare_key)), _compare_value(x._compare_value) {}
+    stdmap(std::initializer_list<value_type> init, const Compare& comp = Compare(), const Allocator& alloc = Allocator())
+            : stdmap(init.begin(), init.end(), comp, alloc) {}
+    ///@}
+
+    ///@name Assignment
+    ///@{
+    stdmap& operator=(const stdmap& o)
+    {
+        _v = container_type(o._v.begin(), o._v.end(), o._v.get_allocator());
+        _compare_key = o._compare_key;
+        _compare_value = value_compare(_compare_key);
+        return *this;
+    }
+    stdmap& operator=(stdmap&& o)
+    {
+        _v = std::move(o._v);
+        _compare_key = std::move(o._compare_key);
+        _compare_value = std::move(o._compare_value);
+        return *this;
+    }
+    stdmap& operator=(std::initializer_list<value_type> il)
+    {
+        _v = il;
+        return *this;
+    }
+    ///@}
+
+    //! @brief returns the associated allocator
+    inline allocator_type get_allocator() const { return _v.get_allocator(); }
+    
     ///@name Element access
     ///@{
     /*! @brief Access specified element with bounds checking */
@@ -245,8 +285,8 @@ class stdmap
     container_type _v;
 
   protected:
-    key_compare _compare_key{};
-    value_compare _compare_value{_compare_key};
+    key_compare _compare_key;
+    value_compare _compare_value;
     inline bool ne_key(const key_type& a, const key_type& b) { return _compare_key(a,b) || _compare_key(b,a); }
     inline bool eq_key(const key_type& a, const key_type& b) { return !ne_key(a, b); }
 };
