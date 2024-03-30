@@ -4,8 +4,10 @@
 
   @mainpage
   Memory-saving map container that is functionally compatible with std::map for C++11 or later
+  @sa https://en.cppreference.com/w/cpp/container/map
   
   @author GOB https://twitter.com/gob_52_gob
+  @author https://github.com/GOB52
 
   @copyright 2024 GOB
   @copyright Licensed under the MIT license. See LICENSE file in the project root for full license information.
@@ -24,6 +26,27 @@
 namespace goblib
 {
 
+///@cond
+template<typename First, typename... Rest>
+typename std::enable_if<!std::is_same<First, std::piecewise_construct_t>::value, First>::type
+get_first_arg(First&& first, Rest&&...) {
+    return std::forward<First>(first);
+}
+
+// Specialization for handling piecewise_construct_t as the first argument
+template<typename... Args>
+auto get_first_arg(std::piecewise_construct_t, Args&&... args) -> decltype(get_first_arg(std::forward<Args>(args)...))
+{
+    return get_first_arg(std::forward<Args>(args)...);
+}
+
+
+
+
+
+
+///@endcond
+
 /*!
   @class stdmap
   @brief std::map-like map class implemented with std::vector
@@ -32,19 +55,24 @@ namespace goblib
   @tparam Compare Function for compare [optional]
   @tparam Allocator Custom allocator [optional]
   @note Adding an element causes the element to be sorted by the value of key (for binary search)
- */
+  @warning Functions of std::map on C++11 are defined.
+  @warning Those on C++14 or later are not defined.
+  @warning For example, std::map::insert_or_assign (C++ 17 or later)
+  @warning Allocator and value_type are different from std::map because using std::vector.
+  @sa https://en.cppreference.com/w/cpp/container/map
+*/
 template <
     typename Key,
     typename T,
     class Compare = std::less<Key>,
-    class Allocator = std::allocator<std::pair<Key, T>>
+    class Allocator = std::allocator<std::pair<Key, T>> // std::allocator<std::pair<const Key, T>> in std::map
           >
 class stdmap
 {
   public:
     using key_type = Key;
     using mapped_type = T;
-    using value_type = typename std::pair<Key, T>;
+    using value_type = typename std::pair<Key, T>; // typename std::pair<const Key, T> in std::map 
     using container_type = std::vector<std::pair<Key, T>, Allocator>;
     using size_type = typename container_type::size_type;
     using reference = value_type&;
@@ -54,6 +82,7 @@ class stdmap
     using reverse_iterator = typename container_type::reverse_iterator;
     using const_reverse_iterator = typename container_type::const_reverse_iterator;
     using key_compare = Compare;
+    ///@cond
     struct ValueCompare
     {
       protected:
@@ -70,6 +99,7 @@ class stdmap
         key_compare cmp{};
         friend class stdmap<Key, T, Compare, Allocator>;
     };
+    ///@endcond
     using value_compare = ValueCompare;
     using allocator_type = Allocator;
     using difference_type = typename std::iterator_traits<iterator>::difference_type;
@@ -84,7 +114,7 @@ class stdmap
     template <class InputIterator> stdmap(InputIterator first, InputIterator last, const Compare& comp = Compare(), const Allocator& alloc = Allocator()) : _v(first, last, alloc), _compare_key(comp), _compare_value(_compare_key) {}
     stdmap(const stdmap& x) : _v(x._v), _compare_key(x._compare_key), _compare_value(_compare_key) {}
     stdmap(const stdmap& x, const Allocator& alloc) : _v(x._v.begin(), x._v.end(), alloc), _compare_key(x._compare_key), _compare_value(_compare_key) {}
-    stdmap(stdmap&& x) : _v(std::move(x._v)), _compare_key(std::move(x._compare_key)), _compare_value(x._compare_value) {}
+    stdmap(stdmap&& x) : _v(std::move(x._v)), _compare_key(std::move(x._compare_key)), _compare_value(std::move(x._compare_value)) {}
     stdmap(stdmap&& x, const Allocator& alloc) : _v(std::move(x._v), alloc), _compare_key(std::move(x._compare_key)), _compare_value(x._compare_value) {}
     stdmap(std::initializer_list<value_type> init, const Compare& comp = Compare(), const Allocator& alloc = Allocator())
             : stdmap(init.begin(), init.end(), comp, alloc) {}
@@ -164,9 +194,104 @@ class stdmap
     ///@name Modifiers
     ///@{
     inline void clear() noexcept { _v.clear(); } //!< @brief Clears the contents
-    //! @brief Constructs element in-place
+
+    //! @brief Inserts element
+    std::pair<iterator, bool> insert(const value_type& x)
+    {
+        auto it = lower_bound(x.first);
+        if(it == _v.end() || ne_key(it->first, x.first))
+        {
+            _v.insert(it, x);
+            return {it, true };
+        }
+        return { it, false };
+    }
+    /*!
+      @brief Inserts element
+      @warning Equivalent to emplace(std::forward<P>(value)) and only participates in overload resolution if std::is_constructible<value_type, P&&>::value == true.
+    */
+    template <class P> std::pair<iterator, bool> insert(P&& x)
+    {
+        return emplace(std::forward<P>(x));
+    }
+    //! @brief Inserts element
+    inline iterator insert(const_iterator position, const value_type& x)
+    {
+        return _v.insert(position, x);
+    }
+    /*!
+      @brief Inserts element
+      @warning Equivalent to emplace_hint(hint, std::forward<P>(value)) and only participates in overload resolution if std::is_constructible<value_type, P&&>::value == true.
+    */
+    template <class P> iterator insert(const_iterator position, P&& x)
+    {
+        return emplace_hint(position, std::forward<P>(x));
+    }
+    /*!
+      @brief Inserts elementst
+      @warning Inserts elements from range [first, last). If multiple elements in the range have keys that compare equivalent, it is unspecified which element is inserted
+    */
+    template <class InputIterator> void insert(InputIterator first, InputIterator last)
+    {
+        auto it = first;
+        while(it != last)
+        {
+            _v.insert(*it);
+            ++it;
+        }
+    }
+    //! @brief Inserts elements
+    inline void insert(std::initializer_list<value_type> init)
+    {
+        insert(init.begin(), init.end());
+    }
+    
+
+#if 0
+    /*!
+      @brief Constructs element in-place
+      @warning Note that even if no elements are inserted, an object of type value_type may be constructed,
+      @warning and as a result the argument args may have been modified by the target of the move.
+     */
+    template <class... Args> std::pair<iterator, bool> emplace(std::piecewise_construct_t, Args&&... args)
+    {
+        const key_type key { std::get<0>(get_first_arg(std::piecewise_construct,std::forward<Args>(args)...)) };
+        auto it = std::lower_bound(_v.begin(), _v.end(), key, [this](const value_type& a, const key_type& b)
+        {
+            return this->_compare_key(a.first, b);
+        });
+        if(it == _v.end() || ne_key(it->first, key))
+        {
+            it = _v.emplace(it, std::piecewise_construct, std::forward<Args>(args)...);
+            return {it, true};
+        }
+        return {it, false};
+
+    }
+#endif
+
+    /*!
+      @brief Constructs element in-place
+      @warning Note that even if no elements are inserted, an object of type value_type may be constructed,
+      @warning and as a result the argument args may have been modified by the target of the move.
+      @todo Like std::map, make move once if possible. (Not so with this implementation)
+     */
     template <class... Args> std::pair<iterator, bool> emplace(Args&&... args)
     {
+#if 0
+        const key_type key { get_first_arg(std::forward<Args>(args)...) };
+        auto it = std::lower_bound(_v.begin(), _v.end(), key, [this](const value_type& a, const key_type& b)
+        {
+            return this->_compare_key(a.first, b);
+        });
+        if(it == _v.end() || ne_key(it->first, key))
+        {
+            it = _v.emplace(it, std::forward<Args>(args)...);
+            return {it, true};
+        }
+        return {it, false};
+#else
+        // Resolved correctly with or without std::piecewise_contruct
         value_type val(std::forward<Args>(args)...);
         auto it = std::lower_bound(_v.begin(), _v.end(), val, [this](const value_type& a, const value_type& b)
         {
@@ -174,10 +299,27 @@ class stdmap
         });
         if(it == _v.end() || ne_key(it->first, val.first))
         {
-            it = _v.insert(it, std::move(val));
+            it = _v.emplace(it, std::move(val));
             return {it, true};
         }
         return {it, false};
+#endif
+    }
+    /*!
+      @brief Constructs elements in-place using a hint
+      @note If the return value is different from the hint, it may be considered inserted.
+      @warning Note that even if no elements are inserted, an object of type value_type may be constructed,
+      @warning and as a result the argument args may have been modified by the target of the move.
+    */
+    template <class... Args> iterator emplace_hint(const_iterator hint, Args&&... args)
+    {
+        // Resolved correctly with or without std::piecewise_contruct
+        value_type val(std::forward<Args>(args)...);        
+        if(hint == _v.end() || ne_key(hint->first, val.first))
+        {
+            hint = _v.insert(hint, std::move(val));
+        }
+        return _v.begin() + (hint - _v.cbegin()); // Same position as hint
     }
     //! @brief Erases element
     size_type erase(const key_type& key)
@@ -286,8 +428,8 @@ class stdmap
   protected:
     key_compare _compare_key;
     value_compare _compare_value;
-    inline bool ne_key(const key_type& a, const key_type& b) { return _compare_key(a,b) || _compare_key(b,a); }
-    inline bool eq_key(const key_type& a, const key_type& b) { return !ne_key(a, b); }
+    inline bool ne_key(const key_type& a, const key_type& b) const { return _compare_key(a,b) || _compare_key(b,a); }
+    inline bool eq_key(const key_type& a, const key_type& b) const { return !ne_key(a, b); }
 };
 
 ///@name Compare
@@ -297,12 +439,12 @@ template<typename Key, typename T, class Compare = std::less<Key>,class Allocato
 bool operator==(const stdmap<Key,T,Compare, Allocator>& a, const stdmap<Key,T,Compare, Allocator>& b)
 {
     using value_type = typename stdmap<Key,T,Compare, Allocator>::value_type;
-    auto cmp = a.key_comp();
+    const auto& cmp = a.key_comp();
     return a.size() == b.size()
-            && std::equal(a.begin(), a.end(), b.begin(), b.end(),
+            && std::equal(a.begin(), a.end(), b.begin(),
                           [&cmp](const value_type& x, const value_type& y)
                           {
-                              return (!(cmp(x,y) || cmp(y,x))) // Are same keys?
+                              return (!(cmp(x.first, y.first) || cmp(y.first, x.first))) // Are same keys?
                                       && x.second == y.second; // Are same values?
                           });
 }
@@ -319,9 +461,9 @@ bool operator<(const stdmap<Key,T,Compare, Allocator>& a, const stdmap<Key,T,Com
     return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(),
                                         [&cmp](const value_type& x, const value_type& y)
                                         {
-                                            return (!(cmp(x,y) || cmp(y,x)))
+                                            return (!(cmp(x.first, y.first) || cmp(y.first, x.first)))
                                                     ? x.second < y.second // Compare by value if the keys are the same
-                                                    : cmp(x,y); // Is x less y??
+                                                    : cmp(x.first, y.first); // Is x less y??
                                         });
 }
 template<typename Key, typename T, class Compare = std::less<Key>,class Allocator = std::allocator<std::pair<Key, T>>>

@@ -9,10 +9,14 @@
 
 auto rng = std::default_random_engine {};
 
-namespace
-{
-//
-}
+#if defined(ARDUINO)
+#include <WString.h>
+using string_t = String;
+#else
+#include <cstring>
+using string_t = std::string;
+#endif
+
 
 TEST(goblib_stdmap, constructor)
 {
@@ -27,6 +31,7 @@ TEST(goblib_stdmap, constructor)
         EXPECT_EQ(gmap.size(), 1U);
 
     }
+
     {
         auto gmap = goblib::stdmap<int,int>(std::less<int>(), MyAllocator<pair_t>());
         EXPECT_TRUE(gmap.empty());
@@ -65,7 +70,6 @@ TEST(goblib_stdmap, constructor)
         EXPECT_EQ(gmap5.size(), elms.size() + 1);
         EXPECT_TRUE(gmap2.empty());
     }
-
     {
         std::initializer_list<pair_t> il= { {1,2}, {2,3}, {3, 4} };
         goblib::stdmap<int,int> gmap(il, std::less<int>(), MyAllocator<pair_t>());
@@ -105,7 +109,172 @@ TEST(goblib_stdmap, assignment)
     }
 }
 
-TEST(goblib_stdmap, compare)
+
+
+namespace
+{
+
+struct Person
+{
+    int id;
+    int age;
+    string_t name;
+
+    Person() : id(-1), age(-2), name("deadbeaf") {}
+    Person(const int a, const int b, const char* c) : id(a), age(b), name(c) {}
+    Person(const Person& x) : id(x.id), age(x.age), name(x.name) { ++count_copy_ctr; }
+    Person(Person&& x) : id(x.id), age(x.age), name(std::move(x.name)) { ++count_move_ctr; }
+
+    Person& operator=(const Person& x)
+    {
+        ++count_copy;
+        id = x.id;
+        age = x.age;
+        name = x.name;
+        return *this;
+    }
+    Person& operator=(Person&& x)
+    {
+        ++count_move;
+        id = x.id;
+        age = x.age;
+        name = std::move(x.name);
+        return *this;
+    }
+    static uint32_t count_copy;
+    static uint32_t count_move;
+    static uint32_t count_copy_ctr;
+    static uint32_t count_move_ctr;
+    
+};
+uint32_t Person::count_copy_ctr{};
+uint32_t Person::count_move_ctr{};
+uint32_t Person::count_copy{};
+uint32_t Person::count_move{};
+
+struct PersonLess
+{
+    bool operator()(const Person& a, const Person& b) const noexcept
+    {
+        return std::tie(a.id, a.age, a.name) < std::tie(b.id, b.age, b.name);
+    }
+};
+//
+}
+
+TEST(goblib_stdmap, comp)
+{
+    {
+        goblib::stdmap<int,char> m;
+        auto comp = m.key_comp();
+        EXPECT_TRUE(comp(1,2));
+        EXPECT_FALSE(comp(3,2));
+    }
+    {
+        goblib::stdmap<int,char> c;
+        const auto& comp = c.value_comp();
+
+        auto p1 = std::make_pair(1,'a');
+        auto p2 = std::make_pair(2,'b');
+        auto p3 = std::make_pair(3,'c');
+
+        EXPECT_TRUE(comp(p1, p2));
+        EXPECT_FALSE(comp(p3, p2));
+    }
+}
+
+TEST(goblib_stdmap, allocator)
+{
+    {
+        goblib::stdmap<int,char> m;
+        std::pair<int,char>* p = m.get_allocator().allocate(2);
+
+        p[0].second = 'a';
+        p[1].second = 'b';
+
+        EXPECT_EQ(p[0].second, 'a');
+        EXPECT_EQ(p[1].second, 'b');
+
+        m.get_allocator().deallocate(p, 2);
+    }
+
+    {
+        goblib::stdmap<int,char,std::less<int>, MyAllocator<std::pair<int,char>>> m;
+        std::pair<int,char>* p = m.get_allocator().allocate(2);
+
+        p[0].second = 'a';
+        p[1].second = 'b';
+
+        EXPECT_EQ(p[0].second, 'a');
+        EXPECT_EQ(p[1].second, 'b');
+
+        m.get_allocator().deallocate(p, 2);
+    }
+}
+
+
+TEST(goblib_stdmap, comapre_operator)
+{
+    {
+        goblib::stdmap<int,char> m1;
+        m1[0] = 'a';
+        auto m2 = m1;
+        EXPECT_EQ(m1, m2);
+        m2[0] = 'b';
+        EXPECT_NE(m1, m2);
+    }
+    {
+        goblib::stdmap<char,int> m1, m2;
+        m1.insert(std::make_pair('a',10));
+        m1.insert(std::make_pair('b',20));
+        m1.insert(std::make_pair('c',30));
+        m2 = m1;
+
+        EXPECT_LE(m1, m2);
+        EXPECT_GE(m2, m1);
+
+        m2.insert(std::make_pair('d',40));
+        EXPECT_LT(m1, m2);
+        EXPECT_LE(m1, m2);
+        EXPECT_GT(m2, m1);
+        EXPECT_GE(m2, m1);
+    }
+}
+
+TEST(goblib_stdmap, user_object)
+{
+    //std::map<Person, int, PersonLess> gmap =
+    goblib::stdmap<Person, int, PersonLess> gmap =
+    {
+        //        {Person{0,  118, "Alice"}, 3},
+        //  {Person{10, 230, "Bob"}, 1},
+        // {Person{20, 330, "Carol"}, 4},
+    };
+
+    //printf("%u/%u/%u/%u\n", Person::count_copy_ctr, Person::count_move_ctr, Person::count_copy, Person::count_move);
+
+    gmap.emplace(Person(1, 11, "Alice"), 42);
+
+    //printf("%u/%u/%u/%u\n", Person::count_copy_ctr, Person::count_move_ctr, Person::count_copy, Person::count_move);
+
+    #if 0
+    for(auto&& e : gmap)
+    {
+        printf("--> Person(%d,%d,%s) %d\n", e.first.id, e.first.age, e.first.name.c_str(), e.second);
+    }
+    #endif
+    EXPECT_EQ(42, gmap[Person(1, 11, "Alice")]);
+
+    //printf("%u/%u/%u/%u\n", Person::count_copy_ctr, Person::count_move_ctr, Person::count_copy, Person::count_move);
+    gmap.emplace(std::piecewise_construct,
+                 std::forward_as_tuple(2, 22, "Bob"),
+                 std::forward_as_tuple(888));
+    //printf("%u/%u/%u/%u\n", Person::count_copy_ctr, Person::count_move_ctr, Person::count_copy, Person::count_move);    
+    EXPECT_EQ(888, gmap[Person(2,22,"Bob")]);
+}
+
+
+TEST(goblib_stdmap, Compare)
 {
     struct compare_str
     {
@@ -261,8 +430,20 @@ TEST(goblib_stdmap, compatibility)
     v_map.emplace(std::piecewise_construct,
                   std::forward_as_tuple(999),
                   std::forward_as_tuple(112)); // empalce(999,112)
+    EXPECT_EQ(s_map[999], 112);
     EXPECT_EQ(s_map[999], v_map[999]);
     EXPECT_EQ(s_map.size(), v_map.size());
+
+    // emplace_hint
+    {
+        auto se = s_map.end();
+        s_map.emplace_hint(se, 12345, 6789);
+        auto ve = v_map.end();
+        v_map.emplace_hint(ve, 12345, 6789);
+        EXPECT_EQ(s_map[12345], 6789);
+        EXPECT_EQ(s_map[12345], v_map[12345]);
+        EXPECT_EQ(s_map.size(), v_map.size());
+    }
     
     // iterator
     {
@@ -295,10 +476,14 @@ TEST(goblib_stdmap, compatibility)
         EXPECT_EQ(sit->first,  vit->first);
         EXPECT_EQ(sit->second, vit->second);
         // not exists
-        sit = s_map.lower_bound(10000);
-        vit = v_map.lower_bound(10000);
+        sit = s_map.lower_bound(999999);
+        vit = v_map.lower_bound(999999);
         EXPECT_EQ(sit, s_map.end());
         EXPECT_EQ(vit, v_map.end());
+        sit = s_map.lower_bound(-999999);
+        vit = v_map.lower_bound(-999999);
+        EXPECT_EQ(sit, s_map.begin());
+        EXPECT_EQ(vit, v_map.begin());
 
         // upper
         // exists
@@ -307,8 +492,12 @@ TEST(goblib_stdmap, compatibility)
         EXPECT_EQ(sit->first,  vit->first);
         EXPECT_EQ(sit->second, vit->second);
         // not exists
-        sit = s_map.upper_bound(-33);
-        vit = v_map.upper_bound(-33);
+        sit = s_map.lower_bound(999999);
+        vit = v_map.lower_bound(999999);
+        EXPECT_EQ(sit, s_map.end());
+        EXPECT_EQ(vit, v_map.end());
+        sit = s_map.lower_bound(-999999);
+        vit = v_map.lower_bound(-999999);
         EXPECT_EQ(sit, s_map.begin());
         EXPECT_EQ(vit, v_map.begin());
 
@@ -349,47 +538,5 @@ TEST(goblib_stdmap, compatibility)
     EXPECT_EQ(s_map.empty(), v_map.empty());
 }
 
-TEST(goblib_stdmap, allocator)
-{
-    //    constexpr size_t esize[] = { 10, 100, 1000, 10000 };
-    constexpr size_t esize[] = { 1000 };
-
-    using smap_t =       std::map<int32_t, uint8_t, std::less<int32_t>, MyAllocator<std::pair<const int32_t, uint8_t>>>;
-    using gmap_t = goblib::stdmap<int32_t, uint8_t, std::less<int32_t>, MyAllocator<std::pair<int32_t, uint8_t>>>;
-    
-
-    for(auto& e : esize)
-    {
-        smap_t smap;
-        //auto& sa = smap.get_allocator();
-        EXPECT_EQ(smap.get_allocator().usage(), 0U);
-
-        //gmap_t gmap;
-        //        auto& ga = gmap.get_allocator();
-        //EXPECT_EQ(gmap.get_allocator().usage(), 0U);
-
-        for(size_t i = 0; i < e; ++i)
-        {
-            smap.emplace((int32_t)i, i&0xFF);
-            //gmap.emplace((int32_t)i, i&0xFF);
-        }
-        //                EXPECT_NE(smap.get_allocator().usage(), 0U);
-        //                EXPECT_NE(gmap.get_allocator().usage(), 0U);
-        
-        printf("-------------->>>[%zu]:%zu\n", e, smap.get_allocator().usage());
-        //        printf("-------------->>>[%zu]:%zu\n", e, gmap.get_allocator().usage());
 
 
-    }
-
-    for(auto& e : esize)
-    {
-        gmap_t gmap;
-        for(size_t i = 0; i < e; ++i)
-        {
-            gmap.emplace((int32_t)i, i&0xFF);
-        }
-        printf("-------------->>>[%zu]:%zu\n", e, gmap.get_allocator().usage());
-    }
-
-}
