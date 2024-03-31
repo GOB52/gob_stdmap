@@ -140,15 +140,15 @@ class stdmap
     }
     ///@}
 
-    //! @brief returns the associated allocator
+    //! @brief Returns the associated allocator
     inline allocator_type get_allocator() const { return _v.get_allocator(); }
     
     ///@name Element access
     ///@{
     /*! @brief Access specified element with bounds checking */
-    inline T& at(const key_type& key) { return _at(key); }
+    inline T& at(const key_type& key) { return at_impl(key); }
     //! @brief Access specified element with bounds checking
-    inline const T& at(const key_type& key) const { return _at(key); }
+    inline const T& at(const key_type& key) const { return at_impl(key); }
     //! @brief Access or insert specified element
     T& operator[](const key_type& key)
     {
@@ -371,16 +371,16 @@ class stdmap
     inline       iterator upper_bound(const key_type& key)       { return upper_bound_impl(key); }
     //! @brief Returns an iterator to the first element greater than the given key
     inline const_iterator upper_bound(const key_type& key) const { return upper_bound_impl(key); }
-
+    //! @brief Returns range of elements matching a specific key
     std::pair<iterator, iterator> equal_range(const key_type& key)
     {
         return { lower_bound(key), upper_bound(key) };
     }
+    //! @brief Returns range of elements matching a specific key
     std::pair<const_iterator, const_iterator> equal_range(const key_type& key) const
     {
         return { lower_bound(key), upper_bound(key) };
     }
-
     ///@}
 
     ///@name Observers
@@ -388,9 +388,14 @@ class stdmap
     inline key_compare key_comp() const { return _compare_key; } //!< @brief Returns the function that compares keys
     inline value_compare value_comp() const { return _compare_value; } //!< @brief Returns the function that compares keys in objects of type value_type
     ///@}
+
+    ///@name Dedicated Extension
+    ///@{
+    inline void reserve(size_type n) { _v.reserve(n); } //!< @brief Reserves storage
+    ///@}
     
   private:
-    T& _at(const key_type& key)
+    T& at_impl(const key_type& key)
     {
         auto it = find(key);
         if (it != _v.end() && eq_key(it->first, key)) { return it->second; }
@@ -423,11 +428,14 @@ class stdmap
     
     container_type _v;
 
+
   protected:
+    ///@cond    
     key_compare _compare_key;
     value_compare _compare_value;
     inline bool ne_key(const key_type& a, const key_type& b) const { return _compare_key(a,b) || _compare_key(b,a); }
     inline bool eq_key(const key_type& a, const key_type& b) const { return !ne_key(a, b); }
+    //@endcond
 };
 
 ///@name Compare
