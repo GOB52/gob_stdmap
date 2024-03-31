@@ -18,7 +18,7 @@ using string_t = std::string;
 #endif
 
 
-TEST(goblib_stdmap, constructor)
+TEST(gob_stdmap, constructor)
 {
     using pair_t = std::pair<int, int>;
     std::array<pair_t, 3> elms = {{{1, 2}, {3, 4}, {5, 6}}};
@@ -80,7 +80,7 @@ TEST(goblib_stdmap, constructor)
     }
 }
 
-TEST(goblib_stdmap, assignment)
+TEST(gob_stdmap, assignment)
 {
     using pair_t = std::pair<int, int>;
     std::initializer_list<pair_t> il= { {1,2}, {2,3}, {3, 4} };
@@ -162,7 +162,7 @@ struct PersonLess
 //
 }
 
-TEST(goblib_stdmap, comp)
+TEST(gob_stdmap, comp)
 {
     {
         goblib::stdmap<int,char> m;
@@ -183,7 +183,7 @@ TEST(goblib_stdmap, comp)
     }
 }
 
-TEST(goblib_stdmap, allocator)
+TEST(gob_stdmap, allocator)
 {
     {
         goblib::stdmap<int,char> m;
@@ -213,7 +213,7 @@ TEST(goblib_stdmap, allocator)
 }
 
 
-TEST(goblib_stdmap, comapre_operator)
+TEST(gob_stdmap, compare_operator)
 {
     {
         goblib::stdmap<int,char> m1;
@@ -225,9 +225,9 @@ TEST(goblib_stdmap, comapre_operator)
     }
     {
         goblib::stdmap<char,int> m1, m2;
+        m1.insert(std::make_pair('c',30));
         m1.insert(std::make_pair('a',10));
         m1.insert(std::make_pair('b',20));
-        m1.insert(std::make_pair('c',30));
         m2 = m1;
 
         EXPECT_LE(m1, m2);
@@ -241,7 +241,7 @@ TEST(goblib_stdmap, comapre_operator)
     }
 }
 
-TEST(goblib_stdmap, user_object)
+TEST(gob_stdmap, user_object)
 {
     //std::map<Person, int, PersonLess> gmap =
     goblib::stdmap<Person, int, PersonLess> gmap =
@@ -274,7 +274,7 @@ TEST(goblib_stdmap, user_object)
 }
 
 
-TEST(goblib_stdmap, Compare)
+TEST(gob_stdmap, Compare)
 {
     struct compare_str
     {
@@ -339,69 +339,69 @@ TEST(goblib_stdmap, Compare)
 }
 
 // Test compatibility between std:map and goblib::stdmap
-TEST(goblib_stdmap, compatibility)
+TEST(gob_stdmap, compatibility)
 {
     std::map<int,int> s_map;
-    goblib::stdmap<int,int> v_map;
+    goblib::stdmap<int,int> g_map;
     std::vector<int> v;
 
     for(int i=0;i<100;++i) { v.emplace_back(i); } 
     std::shuffle(v.begin(),v.end(), rng);
 
     // empty
-    EXPECT_EQ(s_map.empty(), v_map.empty());
+    EXPECT_EQ(s_map.empty(), g_map.empty());
     
     // [],at
     for(auto& e : v)
     {
         s_map[e] = e * 2;
-        v_map[e] = e * 2;
+        g_map[e] = e * 2;
     }
-    for(auto& e : v) { EXPECT_EQ(s_map[e], v_map[e]); }
-    for(auto& e : v) { EXPECT_EQ(s_map.at(e), v_map.at(e)); }
+    for(auto& e : v) { EXPECT_EQ(s_map[e], g_map[e]); }
+    for(auto& e : v) { EXPECT_EQ(s_map.at(e), g_map.at(e)); }
 
     // size
-    EXPECT_EQ(s_map.size(), v_map.size());
+    EXPECT_EQ(s_map.size(), g_map.size());
 
     // erase
     // by key
     auto pos = v.size() - 2;
     auto se = s_map.erase(pos);
-    auto ve = v_map.erase(pos);
+    auto ve = g_map.erase(pos);
     EXPECT_EQ(se, ve);
-    EXPECT_EQ(s_map.size(), v_map.size());
+    EXPECT_EQ(s_map.size(), g_map.size());
     EXPECT_EQ(s_map.find(pos), s_map.end());
-    EXPECT_EQ(v_map.find(pos), v_map.end());
+    EXPECT_EQ(g_map.find(pos), g_map.end());
     // by iterator
     auto sit = std::next(s_map.find(3), 1); // [4]
-    auto vit = std::next(v_map.find(3), 1); // [4]
+    auto vit = std::next(g_map.find(3), 1); // [4]
     EXPECT_EQ(sit->first, vit->first);
     sit = s_map.find(4);
     auto sit2 = s_map.erase(sit);
-    vit = v_map.find(4);
-    auto vit2 = v_map.erase(vit);
-    EXPECT_EQ(s_map.size(), v_map.size());
+    vit = g_map.find(4);
+    auto vit2 = g_map.erase(vit);
+    EXPECT_EQ(s_map.size(), g_map.size());
     EXPECT_EQ(sit2->first, vit2->first);
     EXPECT_EQ(s_map.find(4), s_map.end());
-    EXPECT_EQ(v_map.find(4), v_map.end());
+    EXPECT_EQ(g_map.find(4), g_map.end());
     sit = std::next(s_map.find(3), 1); // [5]
-    vit = std::next(v_map.find(3), 1); // [5]
+    vit = std::next(g_map.find(3), 1); // [5]
     EXPECT_EQ(sit->first, vit->first);
     // by iterators erase 10..19
     sit = s_map.find(10);
     sit2 = s_map.find(20);
     sit2 = s_map.erase(sit, sit2);
-    vit = v_map.find(10);
-    vit2 = v_map.find(20);
-    vit2 = v_map.erase(vit, vit2);
+    vit = g_map.find(10);
+    vit2 = g_map.find(20);
+    vit2 = g_map.erase(vit, vit2);
     EXPECT_EQ(sit2->first, vit2->first);
-    EXPECT_EQ(s_map.size(), v_map.size());
+    EXPECT_EQ(s_map.size(), g_map.size());
     for(int i=10;i<20;++i) // erased?
     {
         EXPECT_EQ(s_map.find(i), s_map.end()) << "S) i:" << i;
-        EXPECT_EQ(v_map.find(i), v_map.end()) << "V) i:" << i;
+        EXPECT_EQ(g_map.find(i), g_map.end()) << "V) i:" << i;
     }
-    EXPECT_EQ(s_map.find(20)->first, v_map.find(20)->first);
+    EXPECT_EQ(s_map.find(20)->first, g_map.find(20)->first);
 
     // count
     EXPECT_EQ(s_map.count(1), s_map.count(1));
@@ -411,38 +411,122 @@ TEST(goblib_stdmap, compatibility)
     // emplace
     // (key Not exists)
     auto rs = s_map.emplace(15, 30);
-    auto rv = v_map.emplace(15, 30);
+    auto rv = g_map.emplace(15, 30);
     EXPECT_EQ(rs.first->first, rv.first->first);   // iterator
     EXPECT_EQ(rs.second, true);
     EXPECT_EQ(rs.second, rv.second); // inserted? bool == true
-    EXPECT_EQ(s_map.size(), v_map.size());
+    EXPECT_EQ(rs.first->first, rv.first->first); // key
+    EXPECT_EQ(rs.first->second, rv.first->second);  // va;ue
+    EXPECT_EQ(s_map.size(), g_map.size());
     // (key exists)
-    rs = s_map.emplace(60, 120);
-    rv = v_map.emplace(60, 120);
+    rs = s_map.emplace(60, -120);
+    rv = g_map.emplace(60, -120);
     EXPECT_EQ(rs.first->first, rv.first->first);   // iterator
     EXPECT_EQ(rs.second, false); // menas failed to emplace
     EXPECT_EQ(rs.second, rv.second); // inserted? bool == false
-    EXPECT_EQ(s_map.size(), v_map.size());
-    // (piecewise construct)
-    s_map.emplace(std::piecewise_construct,
-                  std::forward_as_tuple(999),
-                  std::forward_as_tuple(112)); // empalce(999,112)
-    v_map.emplace(std::piecewise_construct,
-                  std::forward_as_tuple(999),
-                  std::forward_as_tuple(112)); // empalce(999,112)
-    EXPECT_EQ(s_map[999], 112);
-    EXPECT_EQ(s_map[999], v_map[999]);
-    EXPECT_EQ(s_map.size(), v_map.size());
+    EXPECT_EQ(rs.first->first, rv.first->first); // key
+    EXPECT_EQ(rs.first->second, rv.first->second);  // va;ue
 
+    EXPECT_EQ(s_map.size(), g_map.size());
+    // (piecewise construct)
+    rs = s_map.emplace(std::piecewise_construct,
+                       std::forward_as_tuple(999),
+                       std::forward_as_tuple(112)); // empalce(999,112)
+    rv =g_map.emplace(std::piecewise_construct,
+                      std::forward_as_tuple(999),
+                      std::forward_as_tuple(112)); // empalce(999,112)
+    EXPECT_EQ(s_map[999], 112);
+    EXPECT_EQ(s_map[999], g_map[999]);
+    EXPECT_EQ(s_map.size(), g_map.size());
+    EXPECT_EQ(rs.first->first, rv.first->first); // key
+    EXPECT_EQ(rs.first->second, rv.first->second);  // va;ue
+
+    
     // emplace_hint
     {
         auto se = s_map.end();
-        s_map.emplace_hint(se, 12345, 6789);
-        auto ve = v_map.end();
-        v_map.emplace_hint(ve, 12345, 6789);
-        EXPECT_EQ(s_map[12345], 6789);
-        EXPECT_EQ(s_map[12345], v_map[12345]);
-        EXPECT_EQ(s_map.size(), v_map.size());
+        auto st = s_map.emplace_hint(se, 1234, 6789);
+        auto ve = g_map.end();
+        auto vt = g_map.emplace_hint(ve, 1234, 6789);
+        EXPECT_EQ(s_map[1234], 6789);
+        EXPECT_EQ(s_map[1234], g_map[1234]);
+        EXPECT_EQ(s_map.size(), g_map.size());
+        EXPECT_NE(se, st);
+        EXPECT_NE(g_map.end(), vt); // Unlike std::map, ve is disabled at this point
+    }
+
+    // insert
+    {
+        goblib::stdmap<string_t, float> heights_g;
+        std::map<string_t, float> heights_s;
+        auto print_s = [](const std::map<string_t, float>& m)
+        {
+            printf("std---\n");
+            for(auto&& e : m) { printf("[%s]:%f\n", e.first.c_str(), e.second); }
+        };
+        auto print_g = [](const goblib::stdmap<string_t, float>& m)
+        {
+            printf("goblib---\n");
+            for(auto&& e : m) { printf("[%s]:%f\n", e.first.c_str(), e.second); }
+        };
+
+        const auto res_hinata_s = heights_s.insert({"Hinata", 162.8});
+        auto res_hinata_g = heights_g.insert({"Hinata", 162.8});
+        EXPECT_EQ(res_hinata_s.second, res_hinata_g.second);
+        EXPECT_EQ(heights_s.size(), heights_g.size());
+
+        const auto res2_s = heights_s.insert(*(res_hinata_s.first));
+        const auto res2_g = heights_g.insert(*(res_hinata_g.first));
+        EXPECT_EQ(res2_s.second, res2_g.second);
+        EXPECT_EQ(heights_s.size(), heights_g.size());
+
+        const auto res3_s = heights_s.insert(std::pair<string_t,float>{"Kageyama", 180.6});
+        const auto res3_g = heights_g.insert(std::pair<string_t,float>{"Kageyama", 180.6});
+        EXPECT_EQ(res3_s.second, res3_g.second);
+        EXPECT_EQ(heights_s.size(), heights_g.size());
+
+        // Note that the res_hinata.first(iterator) remains valid in std::map, but is disabled in goblilb::stdmap because implemented by vector
+        res_hinata_g.first = heights_g.find("Hinata");
+
+        {
+            const std::size_t n_s = heights_s.size();
+            //const std::size_t n_g = heights_g.size();
+            const auto it_s = heights_s.insert(res_hinata_s.first, *(res_hinata_s.first));
+            const auto it_g = heights_g.insert(res_hinata_g.first, *(res_hinata_g.first));
+            EXPECT_EQ(it_s, res_hinata_s.first); // failed to insert
+            EXPECT_EQ(it_g, res_hinata_g.first); // failed to insert
+            EXPECT_EQ(heights_s.size(), n_s);
+            EXPECT_EQ(heights_s.size(), heights_g.size());
+        }
+
+        {
+            const std::size_t n_s = heights_s.size();
+            //const std::size_t n_g = heights_g.size();
+            //const auto it_s = heights_s.insert(res_hinata_s.first, std::pair<string_t,float>{"Tsukishima", 188.3});
+            //const auto it_g = heights_g.insert(res_hinata_g.first, std::pair<string_t,float>{"Tsukishima", 188.3});
+            const auto it_s = heights_s.insert(res_hinata_s.first, {"Tsukishima", 188.3});
+            const auto it_g = heights_g.insert(res_hinata_g.first, {"Tsukishima", 188.3});
+            EXPECT_NE(it_s, res_hinata_s.first); // inserted
+            EXPECT_NE(it_g, res_hinata_g.first); // inserted
+            EXPECT_NE(heights_s.size(), n_s);
+            EXPECT_EQ(heights_s.size(), heights_g.size());
+            EXPECT_EQ(heights_s.begin()->first, heights_g.begin()->first);
+        }
+
+
+        {
+            std::map<string_t, float> heights2_s;
+            goblib::stdmap<string_t, float> heights2_g;
+            heights2_s.insert(std::begin(heights_s), std::end(heights_s));
+            heights2_g.insert(std::begin(heights_g), std::end(heights_g));
+            EXPECT_EQ(heights2_s.size(), heights2_g.size());
+            EXPECT_EQ(heights2_s, heights_s);
+            EXPECT_EQ(heights2_g, heights_g);
+
+            heights2_s.insert({{"Kozume", 169.2}, {"Kuroo", 187.7}});
+            heights2_g.insert({{"Kozume", 169.2}, {"Kuroo", 187.7}});
+            EXPECT_EQ(heights2_s.size(), heights2_g.size());
+        }
     }
     
     // iterator
@@ -450,8 +534,8 @@ TEST(goblib_stdmap, compatibility)
         auto sbeg = s_map.begin();
         auto send = s_map.end();
         --send;
-        auto vbeg = v_map.begin();
-        auto vend = v_map.end();
+        auto vbeg = g_map.begin();
+        auto vend = g_map.end();
         --vend;
         EXPECT_EQ(sbeg->first, vbeg->first);
         EXPECT_EQ(send->first, vend->first);
@@ -460,8 +544,8 @@ TEST(goblib_stdmap, compatibility)
         auto sbeg = s_map.rbegin();
         auto send = s_map.rend();
         --send;
-        auto vbeg = v_map.rbegin();
-        auto vend = v_map.rend();
+        auto vbeg = g_map.rbegin();
+        auto vend = g_map.rend();
         --vend;
         EXPECT_EQ(sbeg->first, vbeg->first);
         EXPECT_EQ(send->first, vend->first);
@@ -472,71 +556,69 @@ TEST(goblib_stdmap, compatibility)
         // lower
         // exists
         auto sit = s_map.lower_bound(30);
-        auto vit = v_map.lower_bound(30);
+        auto vit = g_map.lower_bound(30);
         EXPECT_EQ(sit->first,  vit->first);
         EXPECT_EQ(sit->second, vit->second);
         // not exists
         sit = s_map.lower_bound(999999);
-        vit = v_map.lower_bound(999999);
+        vit = g_map.lower_bound(999999);
         EXPECT_EQ(sit, s_map.end());
-        EXPECT_EQ(vit, v_map.end());
+        EXPECT_EQ(vit, g_map.end());
         sit = s_map.lower_bound(-999999);
-        vit = v_map.lower_bound(-999999);
+        vit = g_map.lower_bound(-999999);
         EXPECT_EQ(sit, s_map.begin());
-        EXPECT_EQ(vit, v_map.begin());
+        EXPECT_EQ(vit, g_map.begin());
 
         // upper
         // exists
         sit = s_map.upper_bound(30);
-        vit = v_map.upper_bound(30);
+        vit = g_map.upper_bound(30);
         EXPECT_EQ(sit->first,  vit->first);
         EXPECT_EQ(sit->second, vit->second);
         // not exists
         sit = s_map.lower_bound(999999);
-        vit = v_map.lower_bound(999999);
+        vit = g_map.lower_bound(999999);
         EXPECT_EQ(sit, s_map.end());
-        EXPECT_EQ(vit, v_map.end());
+        EXPECT_EQ(vit, g_map.end());
         sit = s_map.lower_bound(-999999);
-        vit = v_map.lower_bound(-999999);
+        vit = g_map.lower_bound(-999999);
         EXPECT_EQ(sit, s_map.begin());
-        EXPECT_EQ(vit, v_map.begin());
+        EXPECT_EQ(vit, g_map.begin());
 
         // equal
         auto sp = s_map.equal_range(50);
-        auto vp = v_map.equal_range(50);
+        auto vp = g_map.equal_range(50);
         EXPECT_EQ(std::distance(sp.first, sp.second), std::distance(vp.first, vp.second));
         sp = s_map.equal_range(5000);
-        vp = v_map.equal_range(5000);
+        vp = g_map.equal_range(5000);
         EXPECT_EQ(std::distance(sp.first, sp.second), std::distance(vp.first, vp.second));
         sp = s_map.equal_range(-5000);
-        vp = v_map.equal_range(-5000);
+        vp = g_map.equal_range(-5000);
         EXPECT_EQ(std::distance(sp.first, sp.second), std::distance(vp.first, vp.second));
     }
     
     // swap
     std::map<int,int> s_map2;
-    goblib::stdmap<int,int> v_map2;
+    goblib::stdmap<int,int> g_map2;
 
     s_map.swap(s_map2);
-    v_map.swap(v_map2);
+    g_map.swap(g_map2);
     EXPECT_TRUE(s_map.empty());
     EXPECT_FALSE(s_map2.empty());
-    EXPECT_EQ(s_map.empty(), v_map.empty());
-    EXPECT_EQ(s_map2.size(), v_map2.size());
+    EXPECT_EQ(s_map.empty(), g_map.empty());
+    EXPECT_EQ(s_map2.size(), g_map2.size());
 
     std::swap(s_map, s_map2);
-    std::swap(v_map, v_map2);
+    std::swap(g_map, g_map2);
     EXPECT_FALSE(s_map.empty());
     EXPECT_TRUE(s_map2.empty());
-    EXPECT_EQ(s_map.empty(), v_map.empty());
-    EXPECT_EQ(s_map2.empty(), v_map2.empty());
-    EXPECT_EQ(s_map.size(), v_map.size());
+    EXPECT_EQ(s_map.empty(), g_map.empty());
+    EXPECT_EQ(s_map2.empty(), g_map2.empty());
+    EXPECT_EQ(s_map.size(), g_map.size());
     
     // clear
     s_map.clear();
-    v_map.clear();
-    EXPECT_EQ(s_map.empty(), v_map.empty());
+    g_map.clear();
+    EXPECT_EQ(s_map.empty(), g_map.empty());
 }
-
-
 

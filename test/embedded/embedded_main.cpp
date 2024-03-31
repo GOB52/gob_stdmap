@@ -20,10 +20,11 @@ void setup()
 {
     M5.begin();
 
-    printf("CPP %ld\n", __cplusplus);
-    printf("ESP-IDF Version %d.%d.%d\n",
+    M5_LOGI("CPP %ld", __cplusplus);
+    M5_LOGI("ESP-IDF Version %d.%d.%d",
            (ESP_IDF_VERSION>>16) & 0xFF, (ESP_IDF_VERSION>>8)&0xFF, ESP_IDF_VERSION & 0xFF);
-
+    M5_LOGI("Heap: %u", esp_get_free_heap_size());
+    
     ::testing::InitGoogleTest();
 
 #ifdef GTEST_FILTER
