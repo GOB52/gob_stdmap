@@ -26,30 +26,25 @@
 namespace goblib
 {
 
+#if 0
 ///@cond
 template<typename First, typename... Rest>
 typename std::enable_if<!std::is_same<First, std::piecewise_construct_t>::value, First>::type
 get_first_arg(First&& first, Rest&&...) {
     return std::forward<First>(first);
 }
-
-// Specialization for handling piecewise_construct_t as the first argument
 template<typename... Args>
 auto get_first_arg(std::piecewise_construct_t, Args&&... args) -> decltype(get_first_arg(std::forward<Args>(args)...))
 {
     return get_first_arg(std::forward<Args>(args)...);
 }
-
-
-
-
-
-
 ///@endcond
+#endif
 
 /*!
   @class stdmap
   @brief std::map-like map class implemented with std::vector
+  @sa https://en.cppreference.com/w/cpp/container/map
   @tparam Key Type of key
   @tparam T Type of element
   @tparam Compare Function for compare [optional]
@@ -58,8 +53,10 @@ auto get_first_arg(std::piecewise_construct_t, Args&&... args) -> decltype(get_f
   @warning Functions of std::map on C++11 are defined.
   @warning Those on C++14 or later are not defined.
   @warning For example, std::map::insert_or_assign (C++ 17 or later)
-  @warning Allocator and value_type are different from std::map because using std::vector.
-  @sa https://en.cppreference.com/w/cpp/container/map
+  
+  <b>Differences from std::map (because using std::vector)</b>
+   - <b>Allocator and value_type are different from std::map </b>
+   - <b>Iterator lifetime is different from std::map</b>
 */
 template <
     typename Key,
@@ -194,14 +191,13 @@ class stdmap
     ///@name Modifiers
     ///@{
     inline void clear() noexcept { _v.clear(); } //!< @brief Clears the contents
-
     //! @brief Inserts element
     std::pair<iterator, bool> insert(const value_type& x)
     {
         auto it = lower_bound(x.first);
         if(it == _v.end() || ne_key(it->first, x.first))
         {
-            _v.insert(it, x);
+            it = _v.insert(it, x);
             return {it, true };
         }
         return { it, false };
@@ -217,7 +213,12 @@ class stdmap
     //! @brief Inserts element
     inline iterator insert(const_iterator position, const value_type& x)
     {
-        return _v.insert(position, x);
+        auto it = position == _v.end() ? position : lower_bound(x.first);
+        if(it == _v.end() || ne_key(it->first, x.first))
+        {
+            return _v.insert(it, x);
+        }
+        return _v.begin() + (it - _v.cbegin());
     }
     /*!
       @brief Inserts element
@@ -236,7 +237,7 @@ class stdmap
         auto it = first;
         while(it != last)
         {
-            _v.insert(*it);
+            insert(*it);
             ++it;
         }
     }
@@ -245,8 +246,6 @@ class stdmap
     {
         insert(init.begin(), init.end());
     }
-    
-
 #if 0
     /*!
       @brief Constructs element in-place
@@ -269,7 +268,6 @@ class stdmap
 
     }
 #endif
-
     /*!
       @brief Constructs element in-place
       @warning Note that even if no elements are inserted, an object of type value_type may be constructed,
@@ -299,8 +297,7 @@ class stdmap
         });
         if(it == _v.end() || ne_key(it->first, val.first))
         {
-            it = _v.emplace(it, std::move(val));
-            return {it, true};
+            return { _v.emplace(it, std::move(val)), true };
         }
         return {it, false};
 #endif
@@ -314,10 +311,11 @@ class stdmap
     template <class... Args> iterator emplace_hint(const_iterator hint, Args&&... args)
     {
         // Resolved correctly with or without std::piecewise_contruct
-        value_type val(std::forward<Args>(args)...);        
-        if(hint == _v.end() || ne_key(hint->first, val.first))
+        value_type val(std::forward<Args>(args)...);
+        auto it = hint == _v.end() ? hint : lower_bound(val.first);
+        if(it == _v.end() || ne_key(it->first, val.first))
         {
-            hint = _v.insert(hint, std::move(val));
+            return _v.emplace(it, std::move(val));
         }
         return _v.begin() + (hint - _v.cbegin()); // Same position as hint
     }
