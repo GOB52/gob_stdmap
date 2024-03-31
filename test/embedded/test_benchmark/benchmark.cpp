@@ -84,6 +84,7 @@ template<typename Key> void benchmark(const size_t sz, std::function<std::vector
             for(auto& e : elms) { m[e] = rng(); }
         }
         M5_LOGI("std::map[]=: elapsed:%lld us mem:%u", tm, mem - esp_get_free_heap_size());
+#if 0
         m.clear();
         // insert
         {
@@ -98,6 +99,7 @@ template<typename Key> void benchmark(const size_t sz, std::function<std::vector
             for(auto& e : elms) { m.emplace(e, rng()); }
         }
         M5_LOGI("std::map.emplace: elapsed:%lld", tm);
+#endif
         // find
         {
             Profile _(tm);
@@ -121,12 +123,14 @@ template<typename Key> void benchmark(const size_t sz, std::function<std::vector
     mem = esp_get_free_heap_size();
     {
         gmap_t m;
+        m.reserve(sz); // goblib::stdmap dedicated Extension
         // []=
         {
             Profile _(tm);
             for(auto& e : elms) { m[e] = rng(); }
         }
         M5_LOGI("goblib::stdmap[]=: elapsed:%lld us mem:%u", tm, mem - esp_get_free_heap_size());
+#if 0
         m.clear();
         // insert
         {
@@ -141,6 +145,7 @@ template<typename Key> void benchmark(const size_t sz, std::function<std::vector
             for(auto& e : elms) { m.emplace(e, rng()); }
         }
         M5_LOGI("goblib::stdmap.emplace: elapsed:%lld", tm);
+#endif
         // find
         {
             Profile _(tm);
@@ -167,7 +172,8 @@ template<typename Key> void benchmark(const size_t sz, std::function<std::vector
 TEST(gob_stdmap, benchmark)
 {
 #if defined(ENABLE_BENCHMARK)
-    constexpr size_t szz[] = { 10, 100, 1000 };
+# pragma message "Execute benchmark"
+    constexpr size_t szz[] = { 10, 100, 1000, 2000 };
     for(auto&& sz : szz)
     {
         benchmark<int>(sz, make_integers);
@@ -179,7 +185,7 @@ TEST(gob_stdmap, benchmark)
     if(board== m5::board_t::board_M5StackCoreS3 ||
        board== m5::board_t::board_M5StackCore2)
     {
-        constexpr size_t szz[] = { 10000, 20000, 40000, 80000 };
+        constexpr size_t szz[] = { 5000, 10000 };
         for(auto&& sz : szz)
         {
             benchmark<int>(sz, make_integers);
