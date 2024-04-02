@@ -21,7 +21,7 @@ using string_t = std::string;
 TEST(gob_stdmap, constructor)
 {
     using pair_t = std::pair<int, int>;
-    std::array<pair_t, 3> elms = {{{1, 2}, {3, 4}, {5, 6}}};
+    std::array<pair_t, 3> elms = {{{123, 2}, {23, 4}, {45, 6}}};
 
     {
         goblib::stdmap<int,int> gmap;
@@ -51,6 +51,8 @@ TEST(gob_stdmap, constructor)
     {
         goblib::stdmap<int,int> gmap(elms.begin(), elms.end(), std::less<int>(), MyAllocator<pair_t>());
         EXPECT_FALSE(gmap.empty());
+        EXPECT_EQ(gmap.begin()->first, 23);
+        EXPECT_EQ((gmap.end() - 1)->first, 123);
         EXPECT_EQ(gmap.size(), elms.size());
         gmap.emplace(111,222);
         EXPECT_EQ(gmap.size(), elms.size() + 1);
@@ -71,41 +73,48 @@ TEST(gob_stdmap, constructor)
         EXPECT_TRUE(gmap2.empty());
     }
     {
-        std::initializer_list<pair_t> il= { {1,2}, {2,3}, {3, 4} };
+        std::initializer_list<pair_t> il= { {123,2}, {23,3}, {45, 4} };
         goblib::stdmap<int,int> gmap(il, std::less<int>(), MyAllocator<pair_t>());
         EXPECT_FALSE(gmap.empty());
-        EXPECT_EQ(gmap.size(), 3);
+        EXPECT_EQ(gmap.begin()->first, 23);
+        EXPECT_EQ((gmap.end() - 1)->first, 123);
+        EXPECT_EQ(gmap.size(), 3U);
         gmap.emplace(111,222);
-        EXPECT_EQ(gmap.size(), 4);
+        EXPECT_EQ(gmap.size(), 4U);
     }
 }
 
 TEST(gob_stdmap, assignment)
 {
     using pair_t = std::pair<int, int>;
-    std::initializer_list<pair_t> il= { {1,2}, {2,3}, {3, 4} };
+    std::initializer_list<pair_t> il= { {123,2}, {23,3}, {45, 4} };
     {
         goblib::stdmap<int,int> gmap(il);
         goblib::stdmap<int,int> gmap2;
 
         EXPECT_FALSE(gmap.empty());
-        EXPECT_EQ(gmap.size(), 3);
+        EXPECT_EQ(gmap.begin()->first, 23);
+        EXPECT_EQ((gmap.end() - 1)->first, 123);
+        EXPECT_EQ(gmap.size(), 3U);
         EXPECT_TRUE(gmap2.empty());
         
         gmap2 = gmap;
         EXPECT_FALSE(gmap2.empty());
-        EXPECT_EQ(gmap2.size(), 3);
-
+        EXPECT_EQ(gmap2.size(), 3U);
+        EXPECT_EQ(gmap2.begin()->first, 23);
+        EXPECT_EQ((gmap2.end() - 1)->first, 123);
+        
         gmap.emplace(555,555);
         gmap2 = std::move(gmap);
         EXPECT_TRUE(gmap.empty());
         EXPECT_FALSE(gmap2.empty());
-        EXPECT_EQ(gmap2.size(), 4);
+        EXPECT_EQ(gmap2.size(), 4U);
 
         gmap2 = il;
         EXPECT_FALSE(gmap2.empty());
-        EXPECT_EQ(gmap2.size(), 3);
-
+        EXPECT_EQ(gmap2.size(), 3U);
+        EXPECT_EQ(gmap2.begin()->first, 23);
+        EXPECT_EQ((gmap2.end() - 1)->first, 123);
     }
 }
 
@@ -459,16 +468,6 @@ TEST(gob_stdmap, compatibility)
     {
         goblib::stdmap<string_t, float> heights_g;
         std::map<string_t, float> heights_s;
-        auto print_s = [](const std::map<string_t, float>& m)
-        {
-            printf("std---\n");
-            for(auto&& e : m) { printf("[%s]:%f\n", e.first.c_str(), e.second); }
-        };
-        auto print_g = [](const goblib::stdmap<string_t, float>& m)
-        {
-            printf("goblib---\n");
-            for(auto&& e : m) { printf("[%s]:%f\n", e.first.c_str(), e.second); }
-        };
 
         const auto res_hinata_s = heights_s.insert({"Hinata", 162.8});
         auto res_hinata_g = heights_g.insert({"Hinata", 162.8});
@@ -621,4 +620,3 @@ TEST(gob_stdmap, compatibility)
     g_map.clear();
     EXPECT_EQ(s_map.empty(), g_map.empty());
 }
-

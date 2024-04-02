@@ -26,20 +26,23 @@
 namespace goblib
 {
 
-#if 0
 ///@cond
-template<typename First, typename... Rest>
-typename std::enable_if<!std::is_same<First, std::piecewise_construct_t>::value, First>::type
-get_first_arg(First&& first, Rest&&...) {
-    return std::forward<First>(first);
-}
-template<typename... Args>
-auto get_first_arg(std::piecewise_construct_t, Args&&... args) -> decltype(get_first_arg(std::forward<Args>(args)...))
+// Extend Compare to allow value_type comparisons
+template<typename K, typename T, class Compare>
+struct compare_less : public Compare
 {
-    return get_first_arg(std::forward<Args>(args)...);
-}
+    using key_type = K;
+    using value_type = std::pair<key_type, T>;
+
+    compare_less() {}
+    explicit compare_less(const Compare& cmp) : Compare(cmp) {}
+    
+    inline bool operator()(const key_type& a,   const key_type& b)   const { return Compare::operator()(a, b); }
+    inline bool operator()(const key_type& a,   const value_type& b) const { return Compare::operator()(a, b.first); }
+    inline bool operator()(const value_type& a, const key_type& b)   const { return Compare::operator()(a.first, b); }
+    inline bool operator()(const value_type& a, const value_type& b) const { return Compare::operator()(a.first, b.first); }
+};
 ///@endcond
-#endif
 
 /*!
   @class stdmap
@@ -64,7 +67,7 @@ template <
     class Compare = std::less<Key>,
     class Allocator = std::allocator<std::pair<Key, T>> // std::allocator<std::pair<const Key, T>> in std::map
           >
-class stdmap
+class stdmap : private std::vector<std::pair<Key,T>, Allocator>, private compare_less<Key, T, Compare>
 {
   public:
     using key_type = Key;
@@ -80,21 +83,14 @@ class stdmap
     using const_reverse_iterator = typename container_type::const_reverse_iterator;
     using key_compare = Compare;
     ///@cond
-    struct ValueCompare
+    class ValueCompare : private key_compare
     {
+        friend class stdmap;
       protected:
-        explicit ValueCompare(key_compare c) : cmp(c) {}
-
+        explicit ValueCompare(key_compare pred) : key_compare(pred) {}
       public:
-        using result_type = bool;
-        using first_argument_type = value_type;
-        using second_argument_type = value_type;
-        inline bool operator()(const value_type& a, const value_type& b) const
-        {
-            return cmp(a.first, b.first);
-        }
-        key_compare cmp{};
-        friend class stdmap<Key, T, Compare, Allocator>;
+        bool operator()(const value_type& lhs, const value_type& rhs) const
+        { return key_compare::operator()(lhs.first, rhs.first); }
     };
     ///@endcond
     using value_compare = ValueCompare;
@@ -103,16 +99,19 @@ class stdmap
     using pointer = typename std::allocator_traits<Allocator>::pointer;
     using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
 
+    using compare_type = compare_less<Key, T, Compare>;
+    
     ///@name Constructor
     ///@{
     stdmap() : stdmap(Compare()) {}
-    explicit stdmap(const Compare& comp, const Allocator& alloc = Allocator()) : _v(alloc), _compare_key(comp), _compare_value(_compare_key) {}
+    explicit stdmap(const Compare& comp, const Allocator& alloc = Allocator())
+            : container_type(alloc), compare_type(comp) {}
     explicit stdmap(const Allocator& alloc) : stdmap(Compare(), alloc) {}
-    template <class InputIterator> stdmap(InputIterator first, InputIterator last, const Compare& comp = Compare(), const Allocator& alloc = Allocator()) : _v(first, last, alloc), _compare_key(comp), _compare_value(_compare_key) {}
-    stdmap(const stdmap& x) : _v(x._v), _compare_key(x._compare_key), _compare_value(_compare_key) {}
-    stdmap(const stdmap& x, const Allocator& alloc) : _v(x._v.begin(), x._v.end(), alloc), _compare_key(x._compare_key), _compare_value(_compare_key) {}
-    stdmap(stdmap&& x) : _v(std::move(x._v)), _compare_key(std::move(x._compare_key)), _compare_value(std::move(x._compare_value)) {}
-    stdmap(stdmap&& x, const Allocator& alloc) : _v(std::move(x._v), alloc), _compare_key(std::move(x._compare_key)), _compare_value(x._compare_value) {}
+    template <class InputIterator> stdmap(InputIterator first, InputIterator last, const Compare& comp = Compare(), const Allocator& alloc = Allocator()) : container_type(alloc), compare_type(comp) { insert(first, last); }
+    stdmap(const stdmap& x) : container_type(x), compare_type(x) {}
+    stdmap(const stdmap& x, const Allocator& alloc) : container_type(x.begin(), x.end(), alloc), compare_type(x) {}
+    stdmap(stdmap&& x) : container_type(std::move(x)), compare_type() {}
+    stdmap(stdmap&& x, const Allocator& alloc) : container_type(std::move(x), alloc), compare_type() {}
     stdmap(std::initializer_list<value_type> init, const Compare& comp = Compare(), const Allocator& alloc = Allocator())
             : stdmap(init.begin(), init.end(), comp, alloc) {}
     ///@}
@@ -121,27 +120,26 @@ class stdmap
     ///@{
     stdmap& operator=(const stdmap& o)
     {
-        _v = container_type(o._v.begin(), o._v.end(), o._v.get_allocator());
-        _compare_key = o._compare_key;
-        _compare_value = value_compare(_compare_key);
+        *(container_type*)this = o;
+        *(compare_type*)this = o;
         return *this;
     }
     stdmap& operator=(stdmap&& o)
     {
-        _v = std::move(o._v);
-        _compare_key = std::move(o._compare_key);
-        _compare_value = std::move(o._compare_value);
+        *(container_type*)this = std::move(o);
+        *(compare_type*)this = std::move(o);
         return *this;
     }
     stdmap& operator=(std::initializer_list<value_type> il)
     {
-        _v = il;
+        clear();
+        insert(il.begin(), il.end());
         return *this;
     }
     ///@}
 
     //! @brief Returns the associated allocator
-    inline allocator_type get_allocator() const { return _v.get_allocator(); }
+    inline allocator_type get_allocator() const { return container_type::get_allocator(); }
     
     ///@name Element access
     ///@{
@@ -150,57 +148,54 @@ class stdmap
     //! @brief Access specified element with bounds checking
     inline const T& at(const key_type& key) const { return at_impl(key); }
     //! @brief Access or insert specified element
-    T& operator[](const key_type& key)
+    mapped_type& operator[](const key_type& key)
     {
-        auto it = lower_bound(key);
-        if (it == _v.end() || ne_key(it->first, key)) { it = _v.insert(it, std::make_pair(key, T())); }
-        return it->second;
+        return insert(value_type(key, mapped_type())).first->second;
     }
     //! @brief Access or insert specified element
-    T& operator[](key_type&& key)
+    mapped_type& operator[](key_type&& key)
     {
-        auto it = lower_bound(key);
-        if (it == _v.end() || ne_key(it->first, key)) { it = _v.insert(it, std::make_pair(std::move(key), T())); }
-        return it->second;
+        return insert(value_type(std::move(key), mapped_type())).first->second;
     }
     ///@}
 
     ///@name Iterators
     ///@{
-    inline iterator begin() noexcept{ return _v.begin(); } //!< @brief Returns an iterator to the beginning
-    inline const_iterator begin() const noexcept{ return _v.begin(); } //!< @brief Returns an iterator to the beginning
-    inline const_iterator cbegin() const noexcept{ return _v.cbegin(); } //!< @brief Returns an iterator to the beginning
-    inline iterator end() noexcept{ return _v.end(); } //!< @brief Returns an iterator to the end
-    inline const_iterator end() const noexcept{ return _v.end(); } //!< @brief Returns an iterator to the end
-    inline const_iterator cend() const noexcept{ return _v.cend(); } //!< @brief Returns an iterator to the end
-    inline reverse_iterator rbegin() noexcept { return _v.rbegin(); } //!< @brief Returns a reverse iterator to the beginning
-    inline const_reverse_iterator rbegin() const noexcept { return _v.rbegin(); } //!< @brief Returns a reverse iterator to the beginning
-    inline const_reverse_iterator crbegin() const noexcept{ return _v.crbegin(); } //!< @brief Returns a reverse iterator to the beginning
-    inline reverse_iterator rend() noexcept { return _v.rend(); } //!< @brief Returns a reverse iterator to the end
-    inline const_reverse_iterator rend() const noexcept { return _v.rend(); } //!< @brief Returns a reverse iterator to the end
-    inline const_reverse_iterator crend() const noexcept { return _v.crend(); } //!< @brief Returns a reverse iterator to the end
+    inline iterator begin() noexcept{ return container_type::begin(); } //!< @brief Returns an iterator to the beginning
+    inline const_iterator begin() const noexcept{ return container_type::begin(); } //!< @brief Returns an iterator to the beginning
+    inline const_iterator cbegin() const noexcept{ return container_type::cbegin(); } //!< @brief Returns an iterator to the beginning
+    inline iterator end() noexcept{ return container_type::end(); } //!< @brief Returns an iterator to the end
+    inline const_iterator end() const noexcept{ return container_type::end(); } //!< @brief Returns an iterator to the end
+    inline const_iterator cend() const noexcept{ return container_type::cend(); } //!< @brief Returns an iterator to the end
+    inline reverse_iterator rbegin() noexcept { return container_type::rbegin(); } //!< @brief Returns a reverse iterator to the beginning
+    inline const_reverse_iterator rbegin() const noexcept { return container_type::rbegin(); } //!< @brief Returns a reverse iterator to the beginning
+    inline const_reverse_iterator crbegin() const noexcept{ return container_type::crbegin(); } //!< @brief Returns a reverse iterator to the beginning
+    inline reverse_iterator rend() noexcept { return container_type::rend(); } //!< @brief Returns a reverse iterator to the end
+    inline const_reverse_iterator rend() const noexcept { return container_type::rend(); } //!< @brief Returns a reverse iterator to the end
+    inline const_reverse_iterator crend() const noexcept { return container_type::crend(); } //!< @brief Returns a reverse iterator to the end
     ///@}
 
     ///@name Capacity
     ///@{
-    inline bool empty() const noexcept { return _v.empty(); } //!< @brief Checks whether the container is empty
-    inline size_type size() const noexcept { return _v.size(); } //!< @brief Returns the number of elements
-    inline size_type max_size() const noexcept { return _v.max_size; } //!< @brief Returns the maximum possible number of elements
+    inline bool empty() const noexcept { return container_type::empty(); } //!< @brief Checks whether the container is empty
+    inline size_type size() const noexcept { return container_type::size(); } //!< @brief Returns the number of elements
+    inline size_type max_size() const noexcept { return container_type::max_size; } //!< @brief Returns the maximum possible number of elements
     ///@}
 
     ///@name Modifiers
     ///@{
-    inline void clear() noexcept { _v.clear(); } //!< @brief Clears the contents
+    inline void clear() noexcept { container_type::clear(); } //!< @brief Clears the contents
     //! @brief Inserts element
     std::pair<iterator, bool> insert(const value_type& x)
     {
+        bool inserted{};
         auto it = lower_bound(x.first);
-        if(it == _v.end() || ne_key(it->first, x.first))
+        if(it == container_type::end() || this->operator()(x.first, it->first))
         {
-            it = _v.insert(it, x);
-            return {it, true };
+            it = container_type::insert(it, x);
+            inserted = true;
         }
-        return { it, false };
+        return { it, inserted };
     }
     /*!
       @brief Inserts element
@@ -213,12 +208,14 @@ class stdmap
     //! @brief Inserts element
     inline iterator insert(const_iterator position, const value_type& x)
     {
-        auto it = position == _v.end() ? position : lower_bound(x.first);
-        if(it == _v.end() || ne_key(it->first, x.first))
+        // Is valid position?
+        if( (position == container_type::begin() || this->operator()(*(position-1), x)) &&
+            (position == container_type::end()    || this->operator()(x, *position)) )
         {
-            return _v.insert(it, x);
+            return container_type::insert(position, x);
         }
-        return _v.begin() + (it - _v.cbegin());
+        // Invalid, then insert by x.key position
+        return insert(x).first;
     }
     /*!
       @brief Inserts element
@@ -234,40 +231,13 @@ class stdmap
     */
     template <class InputIterator> void insert(InputIterator first, InputIterator last)
     {
-        auto it = first;
-        while(it != last)
-        {
-            insert(*it);
-            ++it;
-        }
+        while(first != last) { insert(*first++);  }
     }
     //! @brief Inserts elements
     inline void insert(std::initializer_list<value_type> init)
     {
         insert(init.begin(), init.end());
     }
-#if 0
-    /*!
-      @brief Constructs element in-place
-      @warning Note that even if no elements are inserted, an object of type value_type may be constructed,
-      @warning and as a result the argument args may have been modified by the target of the move.
-     */
-    template <class... Args> std::pair<iterator, bool> emplace(std::piecewise_construct_t, Args&&... args)
-    {
-        const key_type key { std::get<0>(get_first_arg(std::piecewise_construct,std::forward<Args>(args)...)) };
-        auto it = std::lower_bound(_v.begin(), _v.end(), key, [this](const value_type& a, const key_type& b)
-        {
-            return this->_compare_key(a.first, b);
-        });
-        if(it == _v.end() || ne_key(it->first, key))
-        {
-            it = _v.emplace(it, std::piecewise_construct, std::forward<Args>(args)...);
-            return {it, true};
-        }
-        return {it, false};
-
-    }
-#endif
     /*!
       @brief Constructs element in-place
       @warning Note that even if no elements are inserted, an object of type value_type may be constructed,
@@ -276,31 +246,16 @@ class stdmap
      */
     template <class... Args> std::pair<iterator, bool> emplace(Args&&... args)
     {
-#if 0
-        const key_type key { get_first_arg(std::forward<Args>(args)...) };
-        auto it = std::lower_bound(_v.begin(), _v.end(), key, [this](const value_type& a, const key_type& b)
-        {
-            return this->_compare_key(a.first, b);
-        });
-        if(it == _v.end() || ne_key(it->first, key))
-        {
-            it = _v.emplace(it, std::forward<Args>(args)...);
-            return {it, true};
-        }
-        return {it, false};
-#else
+        bool emplaced{};
         // Resolved correctly with or without std::piecewise_contruct
         value_type val(std::forward<Args>(args)...);
-        auto it = std::lower_bound(_v.begin(), _v.end(), val, [this](const value_type& a, const value_type& b)
+        auto it = lower_bound(val.first);
+        if(it == container_type::end() || this->operator()(val, it->first))
         {
-            return this->_compare_value(a, b);
-        });
-        if(it == _v.end() || ne_key(it->first, val.first))
-        {
-            return { _v.emplace(it, std::move(val)), true };
+            it = container_type::emplace(it, std::move(val));
+            emplaced = true;
         }
-        return {it, false};
-#endif
+        return { it, emplaced };
     }
     /*!
       @brief Constructs elements in-place using a hint
@@ -312,93 +267,89 @@ class stdmap
     {
         // Resolved correctly with or without std::piecewise_contruct
         value_type val(std::forward<Args>(args)...);
-        auto it = hint == _v.end() ? hint : lower_bound(val.first);
-        if(it == _v.end() || ne_key(it->first, val.first))
+        auto it = hint == container_type::end() ? hint : lower_bound(val.first);
+        if(it == container_type::end() || this->operator()(val, it->first))
         {
-            return _v.emplace(it, std::move(val));
+            return container_type::emplace(it, std::move(val));
         }
-        return _v.begin() + (hint - _v.cbegin()); // Same position as hint
+        return container_type::begin() + (hint - container_type::cbegin()); // Same position as hint
     }
     //! @brief Erases element
     size_type erase(const key_type& key)
     {
         auto it = find(key);
-        if(it != _v.end() && eq_key(it->first, key)) { _v.erase(it, it + 1); return 1; }
+        if(it != container_type::end()) { container_type::erase(it, it + 1); return 1; }
         return 0;
     }
     //! @brief Erases element
-    inline iterator erase(const_iterator position) { return _v.erase(position); }
+    inline iterator erase(const_iterator position) { return container_type::erase(position); }
     //! @brief Erases elements
-    inline iterator erase(const_iterator first, const_iterator last) { return _v.erase(first, last); }
+    inline iterator erase(const_iterator first, const_iterator last) { return container_type::erase(first, last); }
     //! @brief Swaps the contents
     inline void swap(stdmap<Key, T, Compare, Allocator>& o)
     {
-        _v.swap(o._v);
-        std::swap(_compare_key,o._compare_key);
-        std::swap(_compare_value, o._compare_value);
+        container_type::swap((container_type&)o);
+        std::swap((compare_type&)*this, (compare_type&)o);
     }
     ///@}
 
     ///@name Lookup
     ///@{
     /*! @brief Returns the number of elements matching specific key */
-    inline size_type count(const key_type& key) const { return (size_type)(find(key) != _v.end());  }
+    inline size_type count(const key_type& key) const { return (size_type)(find(key) != container_type::end());  }
     //! @brief Finds element with specific key
     inline const_iterator find(const key_type& key) const
     {
-        auto it = std::lower_bound(_v.begin(), _v.end(), key,
-                                   [this](const value_type& pair, const key_type& k)
-                                   {
-                                       return this->_compare_key(pair.first, k);
-                                   });
-        return (it != _v.end() && eq_key(it->first, key)) ? it : _v.end();
+        auto it = lower_bound(key);
+        return it != container_type::end() && this->operator()(key, it->first) ? container_type::end() : it;
     }
     //! @brief Finds element with specific key
     inline iterator find(const key_type& key)
     {
-        auto it = std::lower_bound(_v.begin(), _v.end(), key,
-                                   [this](const value_type& pair, const key_type& k)
-                                   {
-                                       return this->_compare_key(pair.first, k);
-                                   });
-        return (it != _v.end() && eq_key(it->first, key)) ? it : _v.end();
+        auto it = lower_bound(key);
+        return it != container_type::end() && this->operator()(key, it->first) ? container_type::end() : it;
     }
     //! @brief Returns an iterator to the first element not less than the given key
-    inline       iterator lower_bound(const key_type& key)       { return lower_bound_impl(key); }
+    inline       iterator lower_bound(const key_type& key)       { return std::lower_bound(begin(), end(), key, (compare_type&)*this); }
     //! @brief Returns an iterator to the first element not less than the given key
-    inline const_iterator lower_bound(const key_type& key) const { return lower_bound_impl(key); }
+    inline const_iterator lower_bound(const key_type& key) const { return std::lower_bound(begin(), end(), key, (compare_type&)*this); }
     //! @brief Returns an iterator to the first element greater than the given key
-    inline       iterator upper_bound(const key_type& key)       { return upper_bound_impl(key); }
+    inline       iterator upper_bound(const key_type& key)       { return std::upper_bound(container_type::begin(), container_type::end(), key, (compare_type&)*this); }
     //! @brief Returns an iterator to the first element greater than the given key
-    inline const_iterator upper_bound(const key_type& key) const { return upper_bound_impl(key); }
+    inline const_iterator upper_bound(const key_type& key) const { return std::upper_bound(container_type::begin(), container_type::end(), key, (compare_type&)*this); }
     //! @brief Returns range of elements matching a specific key
-    std::pair<iterator, iterator> equal_range(const key_type& key)
-    {
-        return { lower_bound(key), upper_bound(key) };
-    }
+    std::pair<iterator, iterator> equal_range(const key_type& key) { return std::equal_range(begin(), end(), key, (compare_type&)*this); }
     //! @brief Returns range of elements matching a specific key
-    std::pair<const_iterator, const_iterator> equal_range(const key_type& key) const
-    {
-        return { lower_bound(key), upper_bound(key) };
-    }
+    std::pair<const_iterator, const_iterator> equal_range(const key_type& key) const { return std::equal_range(begin(), end(), key, (compare_type&)*this); }
     ///@}
 
     ///@name Observers
     ///@{
+#if 0
     inline key_compare key_comp() const { return _compare_key; } //!< @brief Returns the function that compares keys
     inline value_compare value_comp() const { return _compare_value; } //!< @brief Returns the function that compares keys in objects of type value_type
-    ///@}
+#else
+        key_compare key_comp() const
+        { return *this; }
 
+        value_compare value_comp() const
+        {
+            const key_compare& comp = *this;
+            return value_compare(comp);
+        }
+#endif
+    ///@}
+    
     ///@name Dedicated Extension
     ///@{
-    inline void reserve(size_type n) { _v.reserve(n); } //!< @brief Reserves storage
+    inline void reserve(size_type n) { container_type::reserve(n); } //!< @brief Reserves storage
     ///@}
     
   private:
-    T& at_impl(const key_type& key)
+    mapped_type& at_impl(const key_type& key)
     {
         auto it = find(key);
-        if (it != _v.end() && eq_key(it->first, key)) { return it->second; }
+        if (it != container_type::end()) { return it->second; }
         // Compiling a C++ source file with exceptions enabled? (GCC macro)
         // See also https://gcc.gnu.org/onlinedocs/cpp/Common-Predefined-Macros.html
 #if defined(__EXCEPTIONS)
@@ -408,34 +359,6 @@ class stdmap
         abort();
 #endif
     }
-
-    inline iterator lower_bound_impl(const key_type& key)
-    {
-        return std::lower_bound(_v.begin(), _v.end(), key,
-                                [this](const value_type& pair, const key_type& k)
-                                {
-                                    return this->_compare_key(pair.first, k);
-                                });
-    }
-    inline iterator upper_bound_impl(const key_type& key)
-    {
-        return std::upper_bound(_v.begin(), _v.end(), key,
-                                [this](const key_type& k, const value_type& pair)
-                                {
-                                    return this->_compare_key(k, pair.first);
-                                });
-    }
-    
-    container_type _v;
-
-
-  protected:
-    ///@cond    
-    key_compare _compare_key;
-    value_compare _compare_value;
-    inline bool ne_key(const key_type& a, const key_type& b) const { return _compare_key(a,b) || _compare_key(b,a); }
-    inline bool eq_key(const key_type& a, const key_type& b) const { return !ne_key(a, b); }
-    //@endcond
 };
 
 ///@name Compare
@@ -500,9 +423,10 @@ namespace std
 */
 template <class Key, class T, class Compare, class Allocator>
 inline void swap(goblib::stdmap<Key,T,Compare,Allocator>& x, goblib::stdmap<Key,T,Compare,Allocator>& y)
-  {
-      x.swap(y);
-  }
+{
+    x.swap(y);
+}
 //std
 }
+
 #endif

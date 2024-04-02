@@ -65,106 +65,50 @@ class Profile
 };
 
 
-template<typename Key> void benchmark(const size_t sz, std::function<std::vector<Key>(const size_t)> f)
+template<class M> void benchmark_map(M& m, std::vector<typename M::key_type>& elms, const char* tag)
+{
+    M5_LOGW("---- %s ----", tag);
+    auto mem = esp_get_free_heap_size();
+    int64_t elapsed{};
+
+    // insert
+    {
+        Profile _(elapsed);
+        for(auto& e : elms) { m.insert({e, rng()}); }
+    }
+    M5_LOGI("usgae: %u", mem - esp_get_free_heap_size());
+    M5_LOGI("   insert: %lld", elapsed);
+    // find
+    {
+        Profile _(elapsed);
+        for(auto& e : elms) { (void)m.find(e); }
+    }
+    M5_LOGI("     find: %lld", elapsed);
+    // iteration
+    {
+        Profile _(elapsed);
+        for(auto& e : m) { ++e.second; }
+    }
+    M5_LOGI("iteration: %lld", elapsed);
+    // erase
+    {
+        Profile _(elapsed);
+        for(auto it = elms.cbegin(); it != elms.cend(); ++it) { m.erase(*it); }
+    }
+    M5_LOGI("    erase: %lld", elapsed);
+}
+
+template<typename Key> void benchmark(const size_t sz, std::function<std::vector<Key>(const size_t)> f, const char* tag)
 {
     using smap_t = std::map<Key,int>;
     using gmap_t = goblib::stdmap<Key,int>;
-    int64_t tm{};
-
-    M5_LOGI("==== benchmark %zu elemnts ====", sz);
     std::vector<Key> elms = f(sz);
 
-    // std::map
-    auto mem = esp_get_free_heap_size();
-    {
-        smap_t m;
-        // []=
-        {
-            Profile _(tm);
-            for(auto& e : elms) { m[e] = rng(); }
-        }
-        M5_LOGI("std::map[]=: elapsed:%lld us mem:%u", tm, mem - esp_get_free_heap_size());
-#if 0
-        m.clear();
-        // insert
-        {
-            Profile _(tm);
-            for(auto& e : elms) { m.insert({e, rng()}); }
-        }
-        M5_LOGI("std::map.insert: elapsed:%lld", tm);
-        m.clear();
-        // emplace
-        {
-            Profile _(tm);
-            for(auto& e : elms) { m.emplace(e, rng()); }
-        }
-        M5_LOGI("std::map.emplace: elapsed:%lld", tm);
-#endif
-        // find
-        {
-            Profile _(tm);
-            for(auto& e : elms) { auto it = m.find(e); }
-        }
-        M5_LOGI("std::map.find: elapsed:%lld us", tm);
-        // iteration
-        {
-            Profile _(tm);
-            for(auto& e : m) { ++e.second; }
-        }
-        M5_LOGI("std::map.iteration: elapsed:%lld us", tm);
-        // erase
-        {
-            Profile _(tm);
-            for(auto it = elms.crbegin(); it != elms.crend(); ++it) { m.erase(*it); }
-        }
-        M5_LOGI("std::map.erase elapsed:%lld us", tm);
-    }
-
-    mem = esp_get_free_heap_size();
-    {
-        gmap_t m;
-        m.reserve(sz); // goblib::stdmap dedicated Extension
-        // []=
-        {
-            Profile _(tm);
-            for(auto& e : elms) { m[e] = rng(); }
-        }
-        M5_LOGI("goblib::stdmap[]=: elapsed:%lld us mem:%u", tm, mem - esp_get_free_heap_size());
-#if 0
-        m.clear();
-        // insert
-        {
-            Profile _(tm);
-            for(auto& e : elms) { m.insert({e, rng()}); }
-        }
-        M5_LOGI("goblib::stdmap.insert: elapsed:%lld", tm);
-        m.clear();
-        // emplace
-        {
-            Profile _(tm);
-            for(auto& e : elms) { m.emplace(e, rng()); }
-        }
-        M5_LOGI("goblib::stdmap.emplace: elapsed:%lld", tm);
-#endif
-        // find
-        {
-            Profile _(tm);
-            for(auto& e : elms) { auto it = m.find(e); }
-        }
-        M5_LOGI("goblib::stdmap.find: elapsed:%lld us", tm);
-        // iteration
-        {
-            Profile _(tm);
-            for(auto& e : m) { ++e.second; }
-        }
-        M5_LOGI("goblib::stdmap.iteration: elapsed:%lld us", tm);
-        // erase
-        {
-            Profile _(tm);
-            for(auto it = elms.crbegin(); it != elms.crend(); ++it) { m.erase(*it); }
-        }
-        M5_LOGI("goblib::stdmap.erase elapsed:%lld us", tm);
-    }
+    M5_LOGE("==== benchmark [%s] %zu elemnts ====", tag, sz);
+    smap_t s;
+    benchmark_map(s, elms, "std::map");
+    gmap_t g;
+    benchmark_map(g, elms, "goblib::stdmap");
 }
 //
 }
@@ -176,8 +120,8 @@ TEST(gob_stdmap, benchmark)
     constexpr size_t szz[] = { 10, 100, 1000, 2000 };
     for(auto&& sz : szz)
     {
-        benchmark<int>(sz, make_integers);
-        benchmark<Person>(sz, make_persons);
+        benchmark<int>(sz, make_integers,   "key:int");
+        benchmark<Person>(sz, make_persons, "Key:struct Person");
     }
 
     // Using PSRAM
@@ -188,8 +132,8 @@ TEST(gob_stdmap, benchmark)
         constexpr size_t szz[] = { 5000, 10000 };
         for(auto&& sz : szz)
         {
-            benchmark<int>(sz, make_integers);
-            benchmark<Person>(sz, make_persons);
+            benchmark<int>(sz, make_integers,   "key:int");
+            benchmark<Person>(sz, make_persons, "Key:struct Person");
         }
     }
 #endif

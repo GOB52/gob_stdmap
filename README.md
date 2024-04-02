@@ -38,6 +38,16 @@ int main()
 }
 ```
 
+## Document
+Can be created from a [configuration file](doc/Doxyfile) and [shell script](doc/doxy.sh) for [Doxygen](https://www.doxygen.nl/).  
+Output is to doc/html
+```
+bash doc/doxy.sh
+```
+or
+See also [GitHub Pages](https://gob52.github.io/gob_unifiedButton/)
+
+
 ## Differences with std::map
 
 ### Behaviour and type
@@ -111,7 +121,7 @@ std::map は便利ですが、内部実装の都合上大量のメモリを使�
 Arduino Library の体裁をとっていますが、他のシステムでも使用可能です。
 
 <!-- AssocVector という同様に std::vector による実装がされている物がありますが、 -->
-
+<!-- C++11 仕様の関数のみ -->
 
 
 ## 導入
@@ -144,6 +154,16 @@ int main()
 }
 ```
 
+## ドキュメント
+[Doxygen](https://www.doxygen.nl/) 用の[設定ファイル](doc/Doxyfile)と[シェルスクリプト](doc/doxy.sh)で作成できます。  
+出力先は doc/html です。
+```
+bash doc/doxy.sh
+```
+
+または[GitHub Pages](https://gob52.github.io/gob_unifiedButton/)を参照してください。
+
+
 ## std::map との相違点
 
 ### 挙動や型
@@ -153,7 +173,7 @@ int main()
 |**class::value_type**| std::pair<const Key, T> | std::pair<Key, T> |
 |**template class Allocator** | std::pair<const Key, T> | std::pair<Key, T> |
 |**Iterator**| bidirectional | random access |
-|**Iteratorの寿命 **| 挿入や削除で**壊れない**| 挿入や削除で**壊れる**|
+|**Iteratorの寿命**| 挿入や削除で**壊れない**| 挿入や削除で**壊れる**|
 
 ### 性能
 
